@@ -1,0 +1,73 @@
+name: Build APK
+
+# Push a tag (git tag v3.9 && git push origin v3.9) and the runner compiles the
+# APK with the same tools build-apk.sh uses locally, then attaches it to a
+# release. The build is signed with the committed keystore's password from
+# secrets, so an update installs straight over the copy already on the phone.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      # A CI build must never carry the tunnel token: this is the LAN address,
+      # and the app asks for the real one on first run.
+      EMILLI_DEFAULT_URL: http://192.168.100.73:8123/mobile.html
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android build-tools
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" | tail -2
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASS" ]; then
+            echo "::error::add ANDROID_KEYSTORE_B64 (base64 of android/emilli-release.keystore) and ANDROID_KEYSTORE_PASS as repo secrets"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/emilli-release.keystore
+          printf '%s' "$KEYSTORE_PASS" > android/.ks-pass
+
+      - name: Build
+        run: ./android/build-apk.sh
+
+      - name: Name the artifact
+        run: |
+          VERSION="$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' android/AndroidManifest.xml | head -1)"
+          cp emilli-remote.apk "emilli-remote-${VERSION}.apk"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          ls -l emilli-remote-*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emilli-remote-apk
+          path: emilli-remote-*.apk
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: emilli-remote-*.apk
+          name: Emilli Remote v${{ env.VERSION }}
+          body: |
+            Android remote for the 24h stream timer.
+
+            Download `emilli-remote-${{ env.VERSION }}.apk` below and open it on the phone.
+            This build contains no access token: enter the server address in the app once.

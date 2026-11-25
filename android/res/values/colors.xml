@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#08080B</color>
+    <color name="panel">#0E0E15</color>
+    <color name="panel_hi">#12121A</color>
+    <color name="line">#22222D</color>
+    <color name="txt">#F4F4F7</color>
+    <color name="dim">#8D8D9B</color>
+    <color name="faint">#5A5A66</color>
+    <color name="yt">#FF2D55</color>
+    <color name="kofi">#29ABE0</color>
+    <color name="like">#FF8A3D</color>
+    <color name="ok">#37E39B</color>
+    <color name="scene_on">#3A1220</color>
+</resources>

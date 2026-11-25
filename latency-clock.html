@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Latency clock</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #card {
+    position: absolute; left: 0; top: 0; width: 760px; height: 320px;
+    background: #000; color: #fff; font-family: "DejaVu Sans Mono", monospace;
+  }
+  #clock { font-size: 132px; line-height: 1; padding: 22px 0 0 24px; font-weight: bold; letter-spacing: 4px; }
+  #sub { font-size: 40px; padding: 10px 0 0 26px; color: #7dffb0; letter-spacing: 2px; }
+  #label { position: absolute; left: 26px; bottom: 14px; font-size: 24px; color: #7a7a7a; letter-spacing: 4px; }
+</style>
+</head>
+<body>
+<div id="card">
+  <div id="clock">--:--:--</div>
+  <div id="sub">epoch -</div>
+  <div id="label">STREAM LATENCY CLOCK</div>
+</div>
+<script>
+// Big wall clock for the eye and for OCR, plus the exact epoch second so the
+// delay can be read straight off a frame without trusting the digits alone.
+const clock = document.getElementById('clock');
+const sub = document.getElementById('sub');
+const pad = (n) => String(n).padStart(2, '0');
+
+function tick() {
+  const now = new Date();
+  clock.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  sub.textContent = `epoch ${Math.floor(now.getTime() / 1000)}`;
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>

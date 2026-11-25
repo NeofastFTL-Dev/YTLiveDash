@@ -1,0 +1,22 @@
+{
+  "streamers": [
+    {
+      "login": "ray_timotei",
+      "label": "Ray_Timotei"
+    },
+    {
+      "login": "cooktilburg",
+      "label": ""
+    },
+    {
+      "login": "hypnotizd",
+      "label": ""
+    },
+    {
+      "login": "smallant",
+      "label": ""
+    }
+  ],
+  "autoRotate": true,
+  "current": "hypnotizd"
+}

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Emilli FTL — Stream Countdown</title>
+<style>
+  :root {
+    --yt: #ff2d55;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  /* Explicit transparency on the root: OBS's Chromium otherwise composites
+     the page against an opaque matte. */
+  html, body { background-color: transparent !important; }
+  body {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.solid-bg { background-color: #0a0a0f !important; }
+  /* Chroma fallback: countdown.html?chroma=1 + Chroma Key filter in OBS. */
+  body.chroma-bg { background-color: #00ff00 !important; }
+
+  #wrap {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+    padding: 40px;
+  }
+  #card {
+    text-align: center;
+    padding: 40px 72px 34px;
+    border-radius: 28px;
+    /* No backdrop-filter / drop-shadow: both create GPU layers that can
+       paint a solid block over transparency in OBS. */
+    background: linear-gradient(180deg, rgba(8, 8, 12, 0.88), rgba(8, 8, 12, 0.8));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 34px 100px -44px rgba(0, 0, 0, 0.95);
+    opacity: 1;
+    transition: opacity 0.9s ease, transform 0.9s ease;
+  }
+  body.gone #card { opacity: 0; transform: translateY(-14px); }
+
+  #label {
+    font-size: 17px; letter-spacing: 0.42em; text-transform: uppercase;
+    color: #b9b9c6;
+  }
+  #clock {
+    font-size: 168px; font-weight: 700; line-height: 1.02;
+    letter-spacing: -0.04em; margin: 12px 0 10px;
+    background: linear-gradient(180deg, #fff 25%, #ff9db0 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 6px 44px rgba(255, 45, 85, 0.35);
+    transition: transform 0.2s ease;
+  }
+  #clock.soon { background: linear-gradient(180deg, #fff 25%, #ff8a3d 100%); -webkit-background-clip: text; background-clip: text; }
+  #clock.imminent { background: linear-gradient(180deg, #ffd7c2, #ff2d55 90%); -webkit-background-clip: text; background-clip: text; animation: pulse 1s ease-in-out infinite; }
+  #clock.live {
+    font-size: 128px; letter-spacing: 0.02em;
+    background: linear-gradient(180deg, #eafff3 20%, #45e08c 100%);
+    -webkit-background-clip: text; background-clip: text;
+    text-shadow: 0 6px 44px rgba(69, 224, 140, 0.4);
+    animation: none;
+  }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+
+  #sub { font-size: 19px; color: #9d9daa; letter-spacing: 0.02em; }
+  #sub b { color: #eaeaf2; font-weight: 600; }
+  #sub .sep { color: #4d4d5c; margin: 0 8px; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="card">
+      <div id="label">STREAM STARTS IN</div>
+      <div id="clock">--:--:--</div>
+      <div id="sub">connecting…</div>
+    </div>
+  </div>
+
+<script>
+/* Pre-live countdown for OBS.
+   The start time is the same one the dashboard writes (state.startAt), so
+   changing START in the dashboard moves this clock and the automatic go-live
+   together. Options:
+     ?title=GOING LIVE IN   custom label
+     ?hideafter=12          seconds a "LIVE NOW" card stays before fading out
+     ?hide=0                never fade out
+     ?bg=1 | ?chroma=1      opaque / chroma-key fallback backgrounds      */
+const qs = new URLSearchParams(location.search);
+const TITLE = qs.get("title") || "STREAM STARTS IN";
+const HIDE_AFTER = (Number(qs.get("hideafter") ?? 12) || 0) * 1000;
+const NEVER_HIDE = qs.get("hide") === "0";
+
+const BASE_MS = 24 * 60 * 60 * 1000;
+const $ = (id) => document.getElementById(id);
+let state = null;
+let offset = 0;          // server clock minus local clock
+let hideTimer = null;
+
+if (qs.get("bg") === "1") document.body.classList.add("solid-bg");
+if (qs.get("chroma") === "1") document.body.classList.add("chroma-bg");
+$("label").textContent = TITLE;
+
+function clockText(ms) {
+  let t = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(t / 3600); t %= 3600;
+  const m = Math.floor(t / 60), s = t % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+function hhmm(d) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+function dayLabel(d) {
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return "";
+  const tomorrow = new Date(today.getTime() + 86400000);
+  if (d.toDateString() === tomorrow.toDateString()) return "tomorrow ";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " ";
+}
+
+function render() {
+  if (!state) return;
+  const clock = $("clock");
+  const sub = $("sub");
+  const now = Date.now() + offset;
+  const startAt = new Date(state.startAt).getTime();
+  const left = startAt - now;
+  const live = !!state.startedAt || left <= 0;
+
+  if (live) {
+    clock.className = "live";
+    clock.textContent = "LIVE NOW";
+    $("label").textContent = state.startedAt ? "WE ARE LIVE" : "STARTING NOW";
+    sub.innerHTML = `go live <b>${hhmm(new Date(state.startedAt || startAt))}</b>`;
+    if (NEVER_HIDE) return;
+    if (!hideTimer) {
+      hideTimer = setTimeout(() => document.body.classList.add("gone"), HIDE_AFTER);
+    }
+    return;
+  }
+
+  clock.className = left < 60000 ? "imminent" : left < 3600000 ? "soon" : "";
+  clock.textContent = clockText(left);
+  $("label").textContent = TITLE;
+  const start = new Date(state.startAt);
+  sub.innerHTML = `goes live <b>${dayLabel(start)}${hhmm(start)}</b>` +
+    `<span class="sep">·</span>sub <b>+5 min</b>` +
+    `<span class="sep">·</span>donate <b>+30 min</b>`;
+}
+
+function connect() {
+  const es = new EventSource("/api/events");
+  es.addEventListener("state", (e) => {
+    state = JSON.parse(e.data);
+    offset = state.serverNow - Date.now();
+    render();
+  });
+  es.onerror = () => { $("sub").textContent = "reconnecting…"; };
+}
+connect();
+setInterval(render, 200);
+</script>
+</body>
+</html>

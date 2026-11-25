@@ -1,0 +1,68 @@
+{
+  "port": 8123,
+  "host": "0.0.0.0",
+  "remote": {
+    "enabled": true,
+    "token": "",
+    "pin": "78745709"
+  },
+  "youtube": {
+    "apiKey": "",
+    "handle": "EmilliFTL",
+    "videoId": "",
+    "autoDetectLive": true,
+    "pollSeconds": 30,
+    "oauth": {
+      "clientId": "287552063700-93u5u2gd102t2atbksrtah3ucb127nhs.apps.googleusercontent.com",
+      "clientSecret": ""
+    },
+    "streamId": "",
+    "streamName": "",
+    "subsPollSeconds": 120,
+    "socialcounts": {
+      "enabled": true,
+      "channelId": "UCYLki_57xkd9KoKygzB0q3A",
+      "baseUrl": "https://api.socialcounts.org/youtube-live-subscriber-count",
+      "pollSeconds": 30
+    },
+    "ytpmvs": {
+      "audioInput": "Emilli YTPMVs",
+      "excludeIds": [
+        "K9AjK_uJB_4"
+      ],
+      "excludeTitles": [
+        "Q&A",
+        "tilliewood",
+        "aneurysm"
+      ]
+    }
+  },
+  "kofi": {
+    "verificationToken": "",
+    "pageUrl": "https://ko-fi.com/emilliftl"
+  },
+  "twitch": {
+    "enabled": true,
+    "relay": "http://127.0.0.1:8099",
+    "scene": "nighty_stream_when_asleep",
+    "source": "Ray stream",
+    "streamers": [
+      {
+        "login": "ray_timotei",
+        "label": "Ray_Timotei"
+      }
+    ]
+  },
+  "obs": {
+    "enabled": true,
+    "url": "ws://127.0.0.1:4455",
+    "password": "",
+    "autoStart": true,
+    "autoStop": true
+  },
+  "vlc": {
+    "enabled": true,
+    "url": "http://127.0.0.1:8080",
+    "password": ""
+  }
+}

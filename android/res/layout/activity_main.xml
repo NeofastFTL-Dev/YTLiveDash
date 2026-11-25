@@ -1,0 +1,1489 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:id="@+id/root"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="12dp"
+        android:paddingTop="10dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="24dp">
+
+        <!-- header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="4dp"
+            android:paddingRight="4dp"
+            android:paddingBottom="10dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.16"
+                android:text="EMILLI  DASHBOARD"
+                android:textColor="@color/txt"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/statusChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_chip"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.16"
+                android:paddingLeft="10dp"
+                android:paddingTop="5dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="5dp"
+                android:text="CONNECTING"
+                android:textColor="@color/dim"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <!-- tabs -->
+        <HorizontalScrollView
+            android:id="@+id/tabsScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="10dp"
+            android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tabLive"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:background="@drawable/bg_tab"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:text="LIVE"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tabMusic"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_tab"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:text="MUSIC"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tabYoutube"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_tab"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:text="YOUTUBE"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tabSystem"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_tab"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:text="SYSTEM"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tabTwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_tab"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:text="TWITCH"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tabBrb"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_tab"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:text="BRB"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tabScenes"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_tab"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:text="SCENES"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tabMixer"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_tab"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:text="MIXER"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- ================= LIVE ================= -->
+        <LinearLayout
+            android:id="@+id/panelLive"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_timer"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingTop="14dp"
+                android:paddingBottom="12dp">
+
+                <TextView
+                    android:id="@+id/tLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.3"
+                    android:text="TIME LEFT ON STREAM"
+                    android:textColor="@color/dim"
+                    android:textSize="9.5sp" />
+
+                <TextView
+                    android:id="@+id/tClock"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:text="--:--:--"
+                    android:textColor="#FFF0F4"
+                    android:textSize="40sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tSub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:text="connecting to the timer…"
+                    android:textColor="@color/dim"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="OBS" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/obsStart"
+                        android:layout_width="0dp"
+                        android:layout_height="50dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_go"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.1"
+                        android:text="GO LIVE"
+                        android:textColor="#C8FFE6"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/obsStop"
+                        android:layout_width="0dp"
+                        android:layout_height="50dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_stop"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.1"
+                        android:text="END STREAM"
+                        android:textColor="#FFD0D8"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/obsInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:text="checking OBS…"
+                    android:textColor="@color/dim"
+                    android:textSize="10.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SCENES" />
+
+                <HorizontalScrollView
+                    android:id="@+id/scenesScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/scenes"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
+
+                <TextView
+                    android:id="@+id/sceneHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text=""
+                    android:textColor="@color/faint"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BOOSTS" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:id="@+id/boostSub"
+                        android:layout_width="0dp"
+                        android:layout_height="76dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_boost"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:letterSpacing="0.14"
+                            android:text="SUB"
+                            android:textColor="@color/dim"
+                            android:textSize="8.5sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:text="+5:00"
+                            android:textColor="#FF6B85"
+                            android:textSize="19sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/boostKofi"
+                        android:layout_width="0dp"
+                        android:layout_height="76dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_boost"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:letterSpacing="0.14"
+                            android:text="KO-FI"
+                            android:textColor="@color/dim"
+                            android:textSize="8.5sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:text="+30:00"
+                            android:textColor="#5CC8F2"
+                            android:textSize="19sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/boostLike"
+                        android:layout_width="0dp"
+                        android:layout_height="76dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_boost"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:letterSpacing="0.14"
+                            android:text="LIKE"
+                            android:textColor="@color/dim"
+                            android:textSize="8.5sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:text="+0:30"
+                            android:textColor="#FFA76B"
+                            android:textSize="19sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/undoBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.1"
+                        android:text="UNDO LAST"
+                        android:textColor="@color/txt"
+                        android:textSize="10.5sp" />
+
+                    <Button
+                        android:id="@+id/ytSync"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.1"
+                        android:text="SYNC YOUTUBE"
+                        android:textColor="@color/txt"
+                        android:textSize="10.5sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_stat"
+                    android:orientation="vertical"
+                    android:paddingLeft="10dp"
+                    android:paddingTop="9dp"
+                    android:paddingRight="10dp"
+                    android:paddingBottom="9dp">
+
+                    <TextView
+                        android:id="@+id/statSub"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:text="0"
+                        android:textColor="@color/txt"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SUBS" android:letterSpacing="0.14" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_stat"
+                    android:orientation="vertical"
+                    android:paddingLeft="10dp"
+                    android:paddingTop="9dp"
+                    android:paddingRight="10dp"
+                    android:paddingBottom="9dp">
+
+                    <TextView
+                        android:id="@+id/statKofi"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:text="0"
+                        android:textColor="@color/txt"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DONOS" android:letterSpacing="0.14" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_stat"
+                    android:orientation="vertical"
+                    android:paddingLeft="10dp"
+                    android:paddingTop="9dp"
+                    android:paddingRight="10dp"
+                    android:paddingBottom="9dp">
+
+                    <TextView
+                        android:id="@+id/statLike"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:text="0"
+                        android:textColor="@color/txt"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="LIKES" android:letterSpacing="0.14" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ACTIVITY" />
+
+                <LinearLayout
+                    android:id="@+id/feed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= MUSIC ================= -->
+        <LinearLayout
+            android:id="@+id/panelMusic"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView style="@style/Label" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="YTPMV MUSIC" />
+
+                    <TextView
+                        android:id="@+id/mixVal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:text="OBS off"
+                        android:textColor="@color/dim"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <SeekBar
+                        android:id="@+id/mixSlider"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="60"
+                        android:progress="60" />
+
+                    <Button
+                        android:id="@+id/mixMute"
+                        android:layout_width="92dp"
+                        android:layout_height="44dp"
+                        android:layout_marginLeft="10dp"
+                        android:background="@drawable/bg_btn"
+                        android:enabled="false"
+                        android:fontFamily="monospace"
+                        android:text="MUTE"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/mixHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="monospace"
+                    android:text="fader = OBS input volume"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="NOW PLAYING · VLC" />
+
+                <TextView
+                    android:id="@+id/npTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    android:fontFamily="monospace"
+                    android:text="—"
+                    android:textColor="@color/txt"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/npMeta"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="monospace"
+                    android:text=""
+                    android:textColor="@color/dim"
+                    android:textSize="10.5sp" />
+
+                <TextView
+                    android:id="@+id/npProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="monospace"
+                    android:text=""
+                    android:textColor="@color/faint"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="QUICK" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/volDown"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:text="VOL -3"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/volUp"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:text="VOL +3"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/volZero"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:text="0 DB"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= YOUTUBE ================= -->
+        <LinearLayout
+            android:id="@+id/panelYoutube"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="YOUTUBE" />
+
+                <TextView android:id="@+id/ytMode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:fontFamily="monospace" android:text="" android:textColor="#C8FFE6" android:textSize="11sp" />
+                <TextView android:id="@+id/ytChannel" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/dim" android:textSize="10.5sp" />
+                <TextView android:id="@+id/ytSubs" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/txt" android:textSize="11sp" />
+                <TextView android:id="@+id/ytLikes" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/txt" android:textSize="11sp" />
+                <TextView android:id="@+id/ytLast" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/faint" android:textSize="10sp" />
+                <TextView android:id="@+id/ytLatency" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:fontFamily="monospace" android:text="latency: not read yet" android:textColor="@color/faint" android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/ytUltra"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.1"
+                    android:text="RESTART → ULTRA-LOW"
+                    android:textColor="#FFD0D8"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/ytAuto"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.1"
+                    android:text="AUTO-FIX: OFF"
+                    android:textColor="@color/txt"
+                    android:textSize="11sp" />
+                <TextView android:id="@+id/ytError" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:fontFamily="monospace" android:text="" android:textColor="@color/like" android:textSize="10.5sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/ytLink"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:fontFamily="monospace"
+                        android:gravity="center"
+                        android:paddingLeft="12dp"
+                        android:paddingRight="12dp"
+                        android:text="@EmilliFTL/live ↗"
+                        android:textColor="#FFD0D8"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/ytCopy"
+                        android:layout_width="wrap_content"
+                        android:layout_height="46dp"
+                        android:layout_marginLeft="8dp"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.1"
+                        android:paddingLeft="14dp"
+                        android:paddingRight="14dp"
+                        android:text="COPY LINK"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/ytSync2"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.1"
+                    android:text="SYNC YOUTUBE NOW"
+                    android:textColor="@color/txt"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <!-- What viewers read on the watch page, and the chat line. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="STREAM INFO · LIVE" />
+
+                <EditText
+                    android:id="@+id/ytTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:hint="stream title"
+                    android:inputType="text"
+                    android:maxLength="100"
+                    android:padding="12dp"
+                    android:singleLine="true"
+                    android:textColor="@color/txt"
+                    android:textColorHint="@color/faint"
+                    android:textSize="11sp" />
+
+                <EditText
+                    android:id="@+id/ytDesc"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:gravity="top"
+                    android:hint="description"
+                    android:inputType="textMultiLine"
+                    android:maxLength="5000"
+                    android:minLines="3"
+                    android:padding="12dp"
+                    android:textColor="@color/txt"
+                    android:textColorHint="@color/faint"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/ytSaveInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.1"
+                    android:text="SAVE TITLE + DESCRIPTION"
+                    android:textColor="#C8FFE6"
+                    android:textSize="11sp" />
+
+                <EditText
+                    android:id="@+id/ytChat"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:hint="live chat message"
+                    android:inputType="text"
+                    android:maxLength="200"
+                    android:padding="12dp"
+                    android:singleLine="true"
+                    android:textColor="@color/txt"
+                    android:textColorHint="@color/faint"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/ytPostChat"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.1"
+                    android:text="POST TO LIVE CHAT"
+                    android:textColor="@color/txt"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/ytInfoState"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="monospace"
+                    android:text=""
+                    android:textColor="@color/faint"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="KO-FI" />
+
+                <TextView android:id="@+id/kofiState" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:fontFamily="monospace" android:text="" android:textColor="#5CC8F2" android:textSize="11sp" />
+                <TextView android:id="@+id/kofiHits" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/txt" android:textSize="11sp" />
+                <TextView android:id="@+id/kofiLast" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/faint" android:textSize="10.5sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= TWITCH ================= -->
+        <LinearLayout
+            android:id="@+id/panelTwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ON AIR · TWITCH" />
+
+                <TextView android:id="@+id/twState" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:fontFamily="monospace" android:text="" android:textColor="#C8B4FF" android:textSize="13sp" />
+                <TextView android:id="@+id/twScene" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:fontFamily="monospace" android:text="" android:textColor="@color/faint" android:textSize="10.5sp" />
+                <TextView android:id="@+id/twError" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:fontFamily="monospace" android:text="" android:textColor="@color/like" android:textSize="10.5sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/twNext"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:text="NEXT ONLINE"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/twAuto"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_go"
+                        android:fontFamily="monospace"
+                        android:text="AUTO: ON"
+                        android:textColor="#C8FFE6"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="QUEUE" />
+
+                <LinearLayout
+                    android:id="@+id/twList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="tap a name to put them on · ↑ moves up · ✕ removes"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ADD STREAMER" />
+
+                <EditText
+                    android:id="@+id/twInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_input"
+                    android:fontFamily="monospace"
+                    android:hint="twitch.tv/name or @name"
+                    android:inputType="textUri"
+                    android:paddingLeft="14dp"
+                    android:paddingRight="14dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp"
+                    android:singleLine="true"
+                    android:textColor="@color/txt"
+                    android:textColorHint="@color/faint"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/twAdd"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.1"
+                    android:text="ADD TO QUEUE"
+                    android:textColor="@color/txt"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= SYSTEM ================= -->
+        <LinearLayout
+            android:id="@+id/panelSystem"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TIMER" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:fontFamily="monospace" android:text="start time (YYYY-MM-DDTHH:MM)" android:textColor="@color/faint" android:textSize="9.5sp" />
+
+                <EditText
+                    android:id="@+id/startAtInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="6dp"
+                    android:background="@drawable/bg_input"
+                    android:fontFamily="monospace"
+                    android:hint="2026-11-23T21:30"
+                    android:inputType="text"
+                    android:paddingLeft="14dp"
+                    android:paddingRight="14dp"
+                    android:singleLine="true"
+                    android:textColor="@color/txt"
+                    android:textColorHint="@color/faint"
+                    android:textSize="13sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/saveStart"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:text="SAVE TIME"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/startNowBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_go"
+                        android:fontFamily="monospace"
+                        android:text="START NOW"
+                        android:textColor="#C8FFE6"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/resetBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_stop"
+                        android:fontFamily="monospace"
+                        android:text="RESET"
+                        android:textColor="#FFD0D8"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SYSTEM" />
+
+                <TextView android:id="@+id/sysObs" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:fontFamily="monospace" android:text="" android:textColor="@color/dim" android:textSize="10.5sp" />
+                <TextView android:id="@+id/sysServer" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/dim" android:textSize="10.5sp" />
+                <TextView android:id="@+id/sysUptime" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/dim" android:textSize="10.5sp" />
+                <TextView android:id="@+id/sysRemote" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="monospace" android:text="" android:textColor="@color/dim" android:textSize="10.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="FULL ACTIVITY" />
+
+                <LinearLayout
+                    android:id="@+id/logBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= BRB ================= -->
+        <LinearLayout
+            android:id="@+id/panelBrb"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BRB TEXTS" />
+
+                <LinearLayout
+                    android:id="@+id/brbList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="the overlay shows one at a time and cycles · tap a line to edit it"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="EDIT" />
+
+                <TextView
+                    android:id="@+id/brbStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="monospace"
+                    android:text=""
+                    android:textColor="@color/faint"
+                    android:textSize="10sp" />
+
+                <EditText
+                    android:id="@+id/brbInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_input"
+                    android:fontFamily="monospace"
+                    android:hint="im at work brb later!"
+                    android:inputType="text"
+                    android:paddingLeft="14dp"
+                    android:paddingRight="14dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp"
+                    android:singleLine="true"
+                    android:textColor="@color/txt"
+                    android:textColorHint="@color/faint"
+                    android:textSize="13sp" />
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="EFFECT" />
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/brbPresets"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/brbSave"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_go"
+                        android:fontFamily="monospace"
+                        android:text="SAVE TEXT"
+                        android:textColor="#C8FFE6"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/brbNew"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:text="NEW"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= SCENES ================= -->
+        <LinearLayout
+            android:id="@+id/panelScenes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SCENE TO EDIT" />
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/scenePickBox"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
+
+                <TextView
+                    android:id="@+id/scenePickHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="tap a scene · ▶ is the one on air · editing here never switches the program"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TEXT IN THIS SCENE" />
+
+                <LinearLayout
+                    android:id="@+id/sceneTextList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical" />
+
+                <Button
+                    android:id="@+id/sceneAddText"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:text="NEW TEXT"
+                    android:textColor="@color/txt"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="tap a line to change its words"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="PNG AND GIF" />
+
+                <LinearLayout
+                    android:id="@+id/sceneImageList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical" />
+
+                <Button
+                    android:id="@+id/sceneAddImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_btn_go"
+                    android:fontFamily="monospace"
+                    android:text="ADD PNG / GIF"
+                    android:textColor="#C8FFE6"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="picked from the gallery · gifs keep animating · placed centred at its own size"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= MIXER ================= -->
+        <LinearLayout
+            android:id="@+id/panelMixer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="AUDIO MIXER" />
+
+                <LinearLayout
+                    android:id="@+id/mixerList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:id="@+id/mixerHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:fontFamily="monospace"
+                    android:text="sliders are the OBS input volumes · MUTE cuts a source"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/foot"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="middle"
+                android:fontFamily="monospace"
+                android:singleLine="true"
+                android:text=""
+                android:textColor="#4D4D58"
+                android:textSize="9.5sp" />
+
+            <TextView
+                android:id="@+id/settingsBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?android:attr/selectableItemBackground"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.14"
+                android:padding="6dp"
+                android:text="SERVER"
+                android:textColor="@color/dim"
+                android:textSize="10sp" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

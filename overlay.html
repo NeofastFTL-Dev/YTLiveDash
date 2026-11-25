@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Emilli FTL — OBS Overlay</title>
+<style>
+  :root {
+    --yt: #ff2d55;
+    --kofi: #29abe0;
+    --like: #ff8a3d;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --card: rgba(10, 10, 14, 0.88);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  /* Transparency has to be explicit on the root element too: OBS's Chromium
+     otherwise composites the page against an opaque matte (green/black). */
+  html, body { background-color: transparent !important; }
+  body {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.solid-bg { background-color: #0a0a0f !important; }
+  /* Fallback for GPUs where OBS still paints transparent as a colour block:
+     load overlay.html?chroma=1 and add a Chroma Key filter in OBS. */
+  body.chroma-bg { background-color: #00ff00 !important; }
+
+  /* ---------------- timer ---------------- */
+  #timer {
+    position: fixed;
+    left: 50%; bottom: 46px;
+    transform: translateX(-50%);
+    text-align: center;
+    padding: 18px 34px 16px;
+    border-radius: 20px;
+    /* No backdrop-filter: in OBS's Chromium it forces a GPU layer that can
+       render as a solid colour block over transparency. */
+    background: linear-gradient(180deg, rgba(8, 8, 12, 0.86), rgba(8, 8, 12, 0.78));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 24px 70px -30px rgba(0, 0, 0, 0.9);
+    min-width: 520px;
+  }
+  #timer.clean {
+    background: none; border: none; box-shadow: none;
+  }
+  #tlabel {
+    font-size: 13px; letter-spacing: 0.4em; color: #b9b9c6;
+    text-transform: uppercase;
+  }
+  #tclock {
+    font-size: 96px; font-weight: 700; line-height: 1.02;
+    letter-spacing: -0.03em; margin: 2px 0 4px;
+    background: linear-gradient(180deg, #fff 25%, #ff9db0 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    /* text-shadow, not filter: drop-shadow() — the latter is another GPU layer
+       that breaks transparency in OBS. */
+    text-shadow: 0 4px 26px rgba(255, 45, 85, 0.35);
+    transition: transform 0.12s ease;
+  }
+  #tclock.bump { transform: scale(1.04); }
+  #tclock.urgent { background: linear-gradient(180deg, #fff 25%, #ff8a3d 100%); -webkit-background-clip: text; background-clip: text; }
+  #tclock.dead { background: linear-gradient(180deg, #ff8a3d, #ff2d55); -webkit-background-clip: text; background-clip: text; }
+  #tmeta { font-size: 14px; color: #9d9daa; letter-spacing: 0.04em; }
+  #tmeta b { color: #eaeaf2; font-weight: 600; }
+  #tcounts {
+    margin-top: 10px; display: flex; gap: 14px; justify-content: center;
+    font-size: 12px; color: #868696; letter-spacing: 0.1em;
+  }
+  #tcounts b { color: #d8d8e2; font-weight: 700; }
+
+  /* ---------------- notifications ---------------- */
+  #toasts {
+    position: fixed; top: 28px; left: 28px;
+    display: flex; flex-direction: column; gap: 12px;
+    width: 380px;
+  }
+  .toast {
+    position: relative;
+    display: grid; grid-template-columns: 52px 1fr auto;
+    align-items: center; gap: 14px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 18px 50px -22px rgba(0, 0, 0, 1);
+    overflow: hidden;
+    transform: translateX(-120%);
+    animation: slideIn 0.42s cubic-bezier(0.18, 0.9, 0.3, 1.05) forwards;
+  }
+  .toast.out { animation: slideOut 0.42s ease forwards; }
+  @keyframes slideIn { to { transform: translateX(0); } }
+  @keyframes slideOut { to { transform: translateX(-120%); opacity: 0; } }
+
+  .toast::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: var(--yt);
+  }
+  .toast.sub::before { background: var(--yt); }
+  .toast.kofi::before { background: var(--kofi); }
+  .toast.like::before { background: var(--like); }
+
+  .ico {
+    width: 52px; height: 52px; border-radius: 12px;
+    display: grid; place-items: center;
+    background: rgba(255, 45, 85, 0.14);
+    border: 1px solid rgba(255, 45, 85, 0.35);
+  }
+  .toast.kofi .ico { background: rgba(41, 171, 224, 0.14); border-color: rgba(41, 171, 224, 0.4); }
+  .toast.like .ico { background: rgba(255, 138, 61, 0.14); border-color: rgba(255, 138, 61, 0.4); }
+  .ico svg { width: 26px; height: 26px; }
+
+  .txt { min-width: 0; }
+  .kicker {
+    font-size: 10.5px; letter-spacing: 0.2em; color: #ff6b85; text-transform: uppercase;
+  }
+  .toast.kofi .kicker { color: #5cc8f2; }
+  .toast.like .kicker { color: #ffa76b; }
+  .who {
+    font-size: 16px; font-weight: 700; color: #fff; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .msg {
+    font-size: 12.5px; color: #b6b6c4; margin-top: 3px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .amt {
+    font-size: 17px; font-weight: 700; color: #ff6b85;
+    white-space: nowrap;
+  }
+  .toast.kofi .amt { color: #5cc8f2; }
+  .toast.like .amt { color: #ffa76b; }
+  .bar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: rgba(255, 255, 255, 0.16);
+    transform-origin: left;
+    animation: drain 6s linear forwards;
+  }
+  @keyframes drain { to { transform: scaleX(0); } }
+
+  body.clean-toasts #toasts { display: none; }
+</style>
+</head>
+<body>
+  <div id="toasts"></div>
+
+  <div id="timer">
+    <div id="tlabel">TIME LEFT ON STREAM</div>
+    <div id="tclock">24:00:00</div>
+    <div id="tmeta">connecting…</div>
+    <div id="tcounts">
+      <span><b id="csub">0</b> SUBS</span>
+      <span><b id="ckofi">0</b> DONOS</span>
+      <span><b id="clike">0</b> LIKES</span>
+    </div>
+  </div>
+
+<script>
+/* OBS overlay: transparent page, big clock, Streamlabs-style toasts.
+   Everything arrives over SSE from server.js. */
+const qs = new URLSearchParams(location.search);
+const withSound = qs.get("sound") !== "0";
+const BASE_MS = 24 * 60 * 60 * 1000;
+
+let state = null;
+let offset = 0;               // server clock minus local clock
+const $ = (id) => document.getElementById(id);
+
+if (qs.get("bg") === "1") document.body.classList.add("solid-bg");
+if (qs.get("chroma") === "1") document.body.classList.add("chroma-bg");
+if (qs.get("timer") === "0") $("timer").style.display = "none";
+if (qs.get("toasts") === "0") document.body.classList.add("clean-toasts");
+if (qs.get("clean") === "1") $("timer").classList.add("clean");
+
+/* ---------- formatting ---------- */
+function clockText(ms) {
+  const neg = ms < 0;
+  let t = Math.floor(Math.abs(ms) / 1000);
+  const h = Math.floor(t / 3600); t %= 3600;
+  const m = Math.floor(t / 60), s = t % 60;
+  return `${neg ? "-" : ""}${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+function shortDur(ms) {
+  const t = Math.round(Math.abs(ms) / 1000);
+  const h = Math.floor(t / 3600), m = Math.round((t % 3600) / 60);
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  if (m) return `${m}m`;
+  return `${t}s`;
+}
+function boostText(ms) {
+  const t = Math.round(ms / 1000);
+  if (t >= 3600) return `+${Math.floor(t / 3600)}h`;
+  if (t >= 60) return `+${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+  return `+0:${String(t).padStart(2, "0")}`;
+}
+function hhmm(d) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+function dayLabel(d) {
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return "";
+  const tomorrow = new Date(today.getTime() + 86400000);
+  if (d.toDateString() === tomorrow.toDateString()) return "tomorrow ";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " ";
+}
+
+/* ---------- render ---------- */
+function render() {
+  if (!state) return;
+  const now = Date.now() + offset;
+  const bank = state.baseMs + state.addedMs;
+  const clock = $("tclock");
+
+  if (!state.startedAt) {
+    const start = new Date(state.startAt).getTime();
+    const runway = start - now + bank;
+    clock.textContent = clockText(runway);
+    clock.className = runway <= 0 ? "dead" : "";
+    $("tlabel").textContent = "STREAM ENDS IN";
+    $("tmeta").innerHTML = `goes live <b>${hhmm(new Date(state.startAt))}</b> · ${shortDur(bank)} base`;
+  } else {
+    const left = bank - (now - state.startedAt);
+    clock.textContent = clockText(left);
+    clock.className = left <= 0 ? "dead" : left < 3600000 ? "urgent" : "";
+    $("tlabel").textContent = left <= 0 ? "TIME'S UP" : "TIME LEFT ON STREAM";
+    const end = new Date(state.startedAt + bank);
+    $("tmeta").innerHTML =
+      left <= 0
+        ? "one more boost puts us back on air"
+        : `ends <b>${dayLabel(end)}${hhmm(end)}</b> · ${shortDur(bank)} bank`;
+  }
+  $("csub").textContent = state.counts.sub || 0;
+  $("ckofi").textContent = state.counts.kofi || 0;
+  $("clike").textContent = state.counts.like || 0;
+}
+
+/* ---------- sound ---------- */
+let actx = null;
+function ping(kind) {
+  if (!withSound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const base = kind === "kofi" ? 520 : kind === "sub" ? 660 : 880;
+    const now = actx.currentTime;
+    [base, base * 1.5].forEach((f, i) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = "triangle";
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, now + i * 0.08);
+      g.gain.exponentialRampToValueAtTime(0.12, now + i * 0.08 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.08 + 0.25);
+      o.connect(g).connect(actx.destination);
+      o.start(now + i * 0.08);
+      o.stop(now + i * 0.08 + 0.28);
+    });
+  } catch { /* audio blocked until OBS/user interaction */ }
+}
+
+/* ---------- toasts ---------- */
+const ICONS = {
+  sub: '<svg viewBox="0 0 24 24" fill="none" stroke="#ff6b85" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  kofi: '<svg viewBox="0 0 24 24" fill="none" stroke="#5cc8f2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h11v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8z"/><path d="M15 9h2.5a2.5 2.5 0 0 1 0 5H15"/><path d="M6 4c0 1 1 1 1 2M10 3c0 1 1 1 1 2"/></svg>',
+  like: '<svg viewBox="0 0 24 24" fill="none" stroke="#ffa76b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v10H4V10z"/><path d="M7 10l4-7a2 2 0 0 1 3 2l-1 4h5a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 16.6 20H7"/></svg>',
+};
+
+function toast(n) {
+  const el = document.createElement("div");
+  el.className = `toast ${n.type}`;
+  const amount = n.amountText ? `${n.amountText}` : boostText(n.amountMs);
+  const kicker =
+    n.type === "kofi" ? "KO-FI DONATION" : n.type === "sub" ? "NEW SUBSCRIBER" : "VIDEO LIKE";
+  const who = n.name || (n.type === "sub" ? "Someone subscribed" : n.type === "like" ? "New like" : "Anonymous");
+  el.innerHTML = `
+    <div class="ico">${ICONS[n.type] || ICONS.sub}</div>
+    <div class="txt">
+      <div class="kicker">${kicker}${n.test ? " · TEST" : ""}</div>
+      <div class="who"></div>
+      ${n.message ? '<div class="msg"></div>' : ""}
+    </div>
+    <div class="amt">${n.type === "kofi" && n.amountText ? n.amountText : boostText(n.amountMs)}</div>
+    <div class="bar"></div>`;
+  el.querySelector(".who").textContent = who;
+  if (n.message) el.querySelector(".msg").textContent = n.message;
+  // show the time gained next to the kicker line for clarity
+  if (n.type === "kofi" && n.amountText) el.querySelector(".amt").textContent = n.amountText;
+  $("toasts").prepend(el);
+  ping(n.type);
+  const clock = $("tclock");
+  clock.classList.add("bump");
+  setTimeout(() => clock.classList.remove("bump"), 140);
+  setTimeout(() => {
+    el.classList.add("out");
+    setTimeout(() => el.remove(), 450);
+  }, 6000);
+  while ($("toasts").children.length > 5) $("toasts").lastElementChild.remove();
+}
+
+/* ---------- stream ---------- */
+function connect() {
+  const es = new EventSource("/api/events");
+  es.addEventListener("state", (e) => {
+    state = JSON.parse(e.data);
+    offset = state.serverNow - Date.now();
+    render();
+  });
+  es.addEventListener("message", (e) => {
+    const n = JSON.parse(e.data);
+    if (n.state) {
+      state = n.state;
+      offset = state.serverNow - Date.now();
+      render();
+    }
+    if (n.kind === "boost") toast(n);
+  });
+  es.onerror = () => {
+    $("tmeta").textContent = "reconnecting…";
+    // EventSource retries on its own
+  };
+}
+
+connect();
+setInterval(render, 200);
+</script>
+</body>
+</html>

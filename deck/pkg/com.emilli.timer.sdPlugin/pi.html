@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Stream Control</title>
+<style>
+  body { margin: 0; padding: 12px; background: #2a2a2a; color: #d8d8d8;
+         font: 12px -apple-system, "Segoe UI", sans-serif; }
+  label { display: block; margin: 10px 0 6px; font-size: 11px; text-transform: uppercase;
+          letter-spacing: .08em; color: #9a9a9a; }
+  select { width: 100%; padding: 7px; background: #1e1e1e; color: #d8d8d8;
+           border: 1px solid #454545; border-radius: 6px; font-size: 12px; }
+  p { color: #7d7d7d; font-size: 11px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<label for="kind">Key does</label>
+<select id="kind">
+  <option value="timer">Live countdown</option>
+  <option value="go">OBS: go live</option>
+  <option value="stop">OBS: end stream</option>
+  <option value="undo">Undo last boost</option>
+  <option value="sync">Sync YouTube</option>
+  <option value="start">Start the run now</option>
+  <option value="sub">Manual sub (+5:00)</option>
+  <option value="kofi">Manual Ko-fi (+30:00)</option>
+  <option value="like">Manual like (+0:30)</option>
+  <option value="mute">Music mute / unmute</option>
+  <option value="volup">Music volume +3 dB</option>
+  <option value="voldown">Music volume −3 dB</option>
+  <option value="scene">Next OBS scene</option>
+  <option value="sceneprev">Previous OBS scene</option>
+  <option value="stats">Live subs / donos / likes</option>
+</select>
+<p>Talking to the timer server on 127.0.0.1:8123. Live keys repaint every second.</p>
+
+<script>
+  const kind = document.getElementById('kind');
+  let socket = null;
+  let context = null;
+
+  function send(event, payload) {
+    if (!socket || socket.readyState !== 1 || !context) return;
+    socket.send(JSON.stringify({ event, context, payload: payload || {} }));
+  }
+
+  function connectElgatoStreamDeckSocket(port, uuid, registerEvent, info, actionInfo) {
+    context = uuid;
+    socket = new WebSocket(`ws://127.0.0.1:${port}`);
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ event: registerEvent, uuid }));
+      socket.send(JSON.stringify({ event: 'getSettings', context: uuid }));
+      if (actionInfo) {
+        try {
+          const parsed = JSON.parse(actionInfo);
+          const settings = (parsed.payload && parsed.payload.settings) || {};
+          if (settings.kind) kind.value = settings.kind;
+        } catch (e) { /* ignore */ }
+      }
+    };
+    socket.onmessage = (message) => {
+      let data;
+      try {
+        data = JSON.parse(message.data);
+      } catch {
+        return;
+      }
+      if (data.event === 'didReceiveSettings') {
+        const settings = (data.payload && data.payload.settings) || {};
+        if (settings.kind) kind.value = settings.kind;
+      }
+    };
+  }
+
+  kind.addEventListener('change', () => send('setSettings', { kind: kind.value }));
+</script>
+</body>
+</html>

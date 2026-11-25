@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------- secrets
+# config.json holds the YouTube API key, the OAuth client secret, the Ko-fi
+# token, the remote access token and the OBS/VLC passwords. config.example.json
+# is the committed shape of it.
+config.json
+yt-token.json
+android/.ks-pass
+android/emilli-release.keystore
+
+# ------------------------------------------------------------- private data
+state.json
+*.log
+journal*.json
+
+# ------------------------------------------------------------ build output
+# The APK is a release artifact, and this copy carries the access token.
+emilli-remote.apk
+emilli-remote.apk.idsig
+android/build/
+android/res/values/defaults.xml
+node_modules/
+deck/node_modules/
+
+# ------------------------------------------------------------ big binaries
+cloudflared
+sounds/
+_check-*.png
+*.tar.gz

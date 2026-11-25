@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Emilli FTL — Now Playing</title>
+<style>
+  :root {
+    --yt: #ff2d55;
+    --kofi: #29abe0;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  html, body { background-color: transparent !important; }
+  body {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.solid-bg { background-color: #0a0a0f !important; }
+  body.chroma-bg { background-color: #00ff00 !important; }
+
+  #np {
+    position: fixed;
+    left: 44px; bottom: 44px;
+    width: 620px;
+    padding: 20px 24px 18px;
+    border-radius: 18px;
+    /* No backdrop-filter / drop-shadow: both break transparency in OBS. */
+    background: linear-gradient(180deg, rgba(8, 8, 12, 0.88), rgba(8, 8, 12, 0.8));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 26px 70px -34px rgba(0, 0, 0, 0.95);
+    display: flex; gap: 16px; align-items: center;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  body.hidden #np { opacity: 0; transform: translateY(10px); }
+
+  #art {
+    width: 74px; height: 74px; flex: 0 0 74px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(255, 45, 85, 0.22), rgba(41, 171, 224, 0.18));
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    display: grid; place-items: center;
+  }
+  #art svg { width: 34px; height: 34px; }
+  #art.paused svg { opacity: 0.45; }
+
+  #body { min-width: 0; flex: 1; }
+  #kicker {
+    font-size: 10.5px; letter-spacing: 0.24em; text-transform: uppercase;
+    color: #ff6b85;
+  }
+  #kicker b { color: #86868f; font-weight: 400; letter-spacing: 0.18em; }
+  #title {
+    font-size: 25px; font-weight: 700; line-height: 1.2; margin-top: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #artist {
+    font-size: 14px; color: #a3a3b2; margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  #barRow { margin-top: 12px; }
+  #bar {
+    height: 6px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    overflow: hidden;
+  }
+  #fill {
+    height: 100%; width: 0%; border-radius: 999px;
+    background: linear-gradient(90deg, #ff2d55, #ff8a3d);
+  }
+  #times {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 7px; font-size: 12.5px; color: #8e8e9c; letter-spacing: 0.04em;
+  }
+  #times b { color: #e7e7ee; font-weight: 700; }
+  #times .left { color: #b9b9c6; }
+</style>
+</head>
+<body class="hidden">
+  <div id="np">
+    <div id="art">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#ff6b85" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="7" cy="17" r="2.6" />
+        <circle cx="18" cy="15" r="2.6" />
+        <path d="M9.6 17V6.2l10.8-2.2V15" />
+      </svg>
+    </div>
+    <div id="body">
+      <div id="kicker">NOW PLAYING <b id="stateTag"></b></div>
+      <div id="title">—</div>
+      <div id="artist"></div>
+      <div id="barRow">
+        <div id="bar"><div id="fill"></div></div>
+        <div id="times">
+          <span class="left">-<span id="remain">0:00</span></span>
+          <span><b id="elapsed">0:00</b> / <span id="total">0:00</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* Now playing for OBS, fed by /api/nowplaying (server polls VLC's HTTP API).
+   Between polls the bar is interpolated locally so it moves smoothly.
+   Options: ?bg=1 solid background, ?chroma=1 green key background. */
+const qs = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+if (qs.get("bg") === "1") document.body.classList.add("solid-bg");
+if (qs.get("chroma") === "1") document.body.classList.add("chroma-bg");
+
+let np = null;
+let fetchedAt = 0;
+let lastGood = null;   // last response that actually had a track
+let lastGoodAt = 0;
+
+function mmss(ms) {
+  const t = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/api/nowplaying", { cache: "no-store" });
+    const j = await r.json();
+    np = j;
+    fetchedAt = performance.now();
+    if (j.ok) {
+      lastGood = j;
+      lastGoodAt = Date.now();
+    }
+  } catch {
+    /* server restarting — keep the last frame, it re-hides on its own */
+  }
+}
+
+function render() {
+  requestAnimationFrame(render);
+  if (!np) return;
+
+  // Pause keeps the card on screen (with the PAUSED tag) — pausing the music
+  // must not make the overlay disappear. A poll that fails (VLC restarting, a
+  // dropped D-Bus call) keeps the last good card for a few seconds too, so the
+  // overlay does not blink out on a single miss.
+  const stale = !np.ok && lastGood && Date.now() - lastGoodAt < 8000;
+  const view = stale ? lastGood : np;
+  const active = view.ok && (view.state === "playing" || view.state === "paused");
+  document.body.classList.toggle("hidden", !active);
+  if (!active) return;
+
+  const known = view.lengthMs > 0;
+  const sinceFetch = stale ? 0 : performance.now() - fetchedAt;
+  const pos = view.playing
+    ? Math.min(view.lengthMs, view.positionMs + (view.ageMs || 0) + sinceFetch)
+    : Math.min(view.lengthMs || Infinity, view.positionMs + (view.ageMs || 0));
+
+  $("title").textContent = view.title || "Unknown track";
+  $("artist").textContent = view.artist || view.album || "";
+  $("stateTag").textContent = view.playing ? "" : "· PAUSED";
+  $("art").classList.toggle("paused", !view.playing);
+
+  if (known) {
+    $("fill").style.width = `${Math.min(100, (pos / view.lengthMs) * 100)}%`;
+    $("elapsed").textContent = mmss(pos);
+    $("total").textContent = mmss(view.lengthMs);
+    $("remain").textContent = mmss(view.lengthMs - pos);
+  } else {
+    $("fill").style.width = "0%";
+    $("elapsed").textContent = mmss(pos);
+    $("total").textContent = "—";
+    $("remain").textContent = "—";
+  }
+}
+
+refresh();
+setInterval(refresh, 1000);
+render();
+</script>
+</body>
+</html>

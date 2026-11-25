@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>YTPMVs</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  #player, #player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+  #status { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center;
+            font: 13px/1.4 ui-monospace, SFMono-Regular, monospace; color: #7a7a88; opacity: .9; transition: opacity .4s; }
+  #status:empty { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<div id="status"></div>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+(() => {
+  "use strict";
+
+  // The list comes from the timer server (/api/ytpmvs → the channel's uploads
+  // playlist), so shuffling and looping happen here and do not depend on
+  // YouTube's embed shuffle remembering anything between videos.
+  const LIST_URL = "/api/ytpmvs";
+  const REFETCH_MS = 10 * 60 * 1000;   // pick up new uploads without a reload
+
+  const statusEl = document.getElementById("status");
+  const note = (t) => { statusEl.textContent = t; };
+
+  let player = null;
+  let all = [];            // every video id, as fetched
+  let queue = [];          // shuffled order for the current pass
+  let qi = 0;              // index into queue
+  let lastFetch = 0;
+  let playing = false;
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  async function fetchList() {
+    const r = await fetch(LIST_URL, { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!j || !Array.isArray(j.videoIds) || !j.videoIds.length) {
+      throw new Error(j && j.error ? j.error : "no videos in the uploads list");
+    }
+    all = j.videoIds.slice();
+    lastFetch = Date.now();
+    return all;
+  }
+
+  // Next video; when a pass runs out, reshuffle the whole channel and go again.
+  function nextVideo() {
+    if (!player || !all.length) return;
+    if (qi >= queue.length) { queue = shuffle(all.slice()); qi = 0; }
+    const id = queue[qi++];
+    try { player.loadVideoById(id); }
+    catch { setTimeout(nextVideo, 750); }
+  }
+
+  function onState(e) {
+    if (!player || !window.YT || !YT.PlayerState) return;
+    const S = YT.PlayerState;
+    if (e.data === S.ENDED) { nextVideo(); return; }
+    if (e.data === S.PLAYING) { playing = true; note(""); return; }
+    // Some videos sit "paused" at 0:00 when the browser refuses autoplay.
+    if (e.data === S.PAUSED) { try { player.playVideo(); } catch {} }
+  }
+
+  // 2 (bad id), 5 (player error), 100 (removed/private), 101 & 150 (embedding
+  // disabled): skip instead of leaving a black frame up for 3 minutes.
+  function onError() { note("skipping a video that will not embed"); setTimeout(nextVideo, 400); }
+
+  window.onYouTubeIframeAPIReady = async () => {
+    try {
+      await fetchList();
+    } catch (e) {
+      note("playlist unavailable — " + e.message);
+      setTimeout(window.onYouTubeIframeAPIReady, 15000);
+      return;
+    }
+    queue = shuffle(all.slice());
+    player = new YT.Player("player", {
+      videoId: queue[qi++],
+      playerVars: {
+        autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1, rel: 0,
+        playsinline: 1, iv_load_policy: 3, fs: 0,
+      },
+      events: {
+        onReady: (ev) => { try { ev.target.playVideo(); } catch {} },
+        onStateChange: onState,
+        onError,
+      },
+    });
+
+    // OBS's browser normally autoplays; if a state change never arrives, keep
+    // nudging playVideo() until something is actually playing.
+    setInterval(() => {
+      if (!player || playing) return;
+      try { player.playVideo(); } catch {}
+    }, 4000);
+
+    // Refresh the list quietly so videos uploaded mid-stream join the rotation.
+    setInterval(() => {
+      if (Date.now() - lastFetch < REFETCH_MS) return;
+      fetchList().catch(() => {});
+    }, 60000);
+  };
+})();
+</script>
+</body>
+</html>

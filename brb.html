@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BRB</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent; overflow: hidden;
+  }
+  #line {
+    position: absolute; left: 0; right: 0; top: 50%;
+    transform: translateY(-50%);
+    text-align: center; white-space: nowrap;
+    font-family: "Nunito", "Segoe UI", system-ui, "DejaVu Sans", sans-serif;
+    font-weight: 900; font-size: 104px; letter-spacing: 1px;
+    color: #fff;
+    text-shadow: 0 0 2px rgba(0,0,0,.95), 0 4px 0 rgba(0,0,0,.55), 0 0 26px rgba(0,0,0,.45);
+  }
+  #line span {
+    display: inline-block;
+    text-shadow: 0 0 2px rgba(0,0,0,.95), 0 4px 0 rgba(0,0,0,.55), 0 0 26px rgba(0,0,0,.45);
+  }
+  #line span.space { width: .34em; }
+
+  /* ---------------------------------------------------------------- presets */
+
+  /* rainbow wiggle: per-letter colour, each letter bobs on its own delay */
+  #line[data-preset="rainbow-wiggle"] { animation: hue 6s linear infinite; }
+  #line[data-preset="rainbow-wiggle"] span {
+    color: hsl(calc(var(--i) * 17deg) 100% 62%);
+    -webkit-text-stroke: 2px rgba(0,0,0,.35);
+    animation: wave 1.6s ease-in-out infinite;
+    animation-delay: calc(var(--i) * -0.09s);
+  }
+
+  /* trans flag gradient flowing through the words */
+  #line[data-preset="trans-gradient"] {
+    background-image: linear-gradient(90deg,
+      #5BCFFA 0%, #F5A9B8 22%, #FFFFFF 40%, #F5A9B8 58%, #5BCFFA 80%, #5BCFFA 100%);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 2px rgba(0,0,0,.95)) drop-shadow(0 3px 0 rgba(0,0,0,.5)) drop-shadow(0 0 18px rgba(245,169,184,.55));
+    animation: flow 5s linear infinite;
+  }
+
+  /* shaky: letters tremble independently */
+  #line[data-preset="shaky"] span {
+    animation: shake .11s infinite alternate ease-in-out;
+    animation-delay: calc(var(--i) * -0.04s);
+  }
+
+  /* glow: steady neon halo */
+  #line[data-preset="glow"] {
+    color: #fff;
+    text-shadow:
+      0 0 2px #000, 0 4px 0 rgba(0,0,0,.5),
+      0 0 18px #7ef9ff, 0 0 42px #59a7ff, 0 0 70px #b06bff;
+    animation: breathe 3.4s ease-in-out infinite;
+  }
+
+  /* pulse: heartbeat scale with a warm halo */
+  #line[data-preset="pulse"] {
+    color: #fff;
+    text-shadow: 0 0 2px #000, 0 4px 0 rgba(0,0,0,.5), 0 0 30px rgba(255,120,190,.9);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes wave {
+    0%, 100% { transform: translateY(-14px) rotate(-3deg); }
+    50%      { transform: translateY(14px) rotate(3deg); }
+  }
+  @keyframes hue {
+    from { filter: hue-rotate(0deg); }
+    to   { filter: hue-rotate(360deg); }
+  }
+  @keyframes flow {
+    from { background-position: 0% 50%; }
+    to   { background-position: 300% 50%; }
+  }
+  @keyframes shake {
+    from { transform: translate(calc(var(--r) * 3px), -2px) rotate(calc(var(--r) * 1.5deg)); }
+    to   { transform: translate(calc(var(--r) * -3px), 2px) rotate(calc(var(--r) * -1.5deg)); }
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: .92; }
+    50%      { opacity: 1; }
+  }
+  @keyframes pulse {
+    0%, 100% { transform: translateY(-50%) scale(1); }
+    50%      { transform: translateY(-50%) scale(1.05); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #line, #line span { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="line" aria-label="im at work brb later!"></div>
+<script>
+  /* The texts and their animation preset come from the timer (/api/brb), which
+     the phone app edits. Several texts cycle one at a time. */
+  const line = document.getElementById("line");
+  const PER_LETTER = ["rainbow-wiggle", "shaky"];
+  let cfg = { seconds: 8, items: [] };
+  let index = 0;
+  let cycle = null;
+  let lastSig = "";
+
+  function render(item) {
+    const preset = item.preset || "plain";
+    line.dataset.preset = preset;
+    line.setAttribute("aria-label", item.text);
+    line.textContent = "";
+    if (PER_LETTER.indexOf(preset) === -1) {
+      line.textContent = item.text;
+      return;
+    }
+    [...item.text].forEach((ch, i) => {
+      const s = document.createElement("span");
+      s.textContent = ch === " " ? "\u00a0" : ch;
+      if (ch === " ") s.className = "space";
+      const jitter = (Math.random() * 2 - 1).toFixed(2);
+      s.style.setProperty("--i", i);
+      s.style.setProperty("--r", jitter);
+      line.appendChild(s);
+    });
+  }
+
+  function show(i) {
+    if (!cfg.items.length) return;
+    index = ((i % cfg.items.length) + cfg.items.length) % cfg.items.length;
+    render(cfg.items[index]);
+  }
+
+  async function load(first) {
+    let next;
+    try {
+      const res = await fetch("/api/brb", { cache: "no-store" });
+      next = await res.json();
+    } catch (e) {
+      return;
+    }
+    if (!next || !next.items) return;
+    const sig = JSON.stringify(next.items) + "|" + next.seconds;
+    if (sig === lastSig) return;
+    lastSig = sig;
+    cfg = next;
+    if (cycle) clearInterval(cycle);
+    show(first ? 0 : Math.min(index, cfg.items.length - 1));
+    if (cfg.items.length > 1) {
+      cycle = setInterval(() => show(index + 1), Math.max(3, cfg.seconds || 8) * 1000);
+    }
+  }
+
+  load(true);
+  setInterval(() => load(false), 15000);
+</script>
+</body>
+</html>

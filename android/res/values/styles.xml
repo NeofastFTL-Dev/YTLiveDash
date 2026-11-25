@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/yt</item>
+        <item name="android:colorPrimaryDark">@color/bg</item>
+        <item name="android:colorAccent">@color/yt</item>
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:textColorPrimary">@color/txt</item>
+        <item name="android:textColorSecondary">@color/dim</item>
+    </style>
+
+    <style name="Label">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">9.5sp</item>
+        <item name="android:textColor">@color/dim</item>
+        <item name="android:letterSpacing">0.22</item>
+    </style>
+</resources>

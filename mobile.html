@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#08080b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Emilli Stream Remote</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<style>
+  :root {
+    --bg: #08080b;
+    --panel: rgba(255, 255, 255, 0.045);
+    --line: rgba(255, 255, 255, 0.1);
+    --txt: #f4f4f7;
+    --dim: #8d8d9b;
+    --yt: #ff2d55;
+    --kofi: #29abe0;
+    --like: #ff8a3d;
+    --ok: #37e39b;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html { height: 100%; }
+  body {
+    min-height: 100%;
+    background:
+      radial-gradient(520px 320px at 50% -8%, rgba(255, 45, 85, 0.18), transparent 62%),
+      var(--bg);
+    color: var(--txt);
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    padding: max(10px, env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));
+    display: grid;
+    /* The single column must not size to its widest child: the SCENES strip is
+       a nowrap row of chips whose max-content is wider than any phone, and an
+       auto track would widen the whole page instead of letting it scroll. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    touch-action: manipulation;
+  }
+
+  /* ---------- header ---------- */
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .brand { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; }
+  .brand em { font-style: normal; color: var(--dim); font-weight: 400; margin-left: 6px; letter-spacing: 0.18em; }
+  .chip {
+    font-size: 10px; letter-spacing: 0.16em; padding: 5px 10px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--dim);
+    background: var(--panel); white-space: nowrap;
+  }
+  .chip.live { color: #ffd8e1; border-color: rgba(255, 45, 85, 0.45); background: rgba(255, 45, 85, 0.14); }
+  .chip.over { color: #ffd9c8; border-color: rgba(255, 138, 61, 0.5); background: rgba(255, 138, 61, 0.14); }
+
+  /* ---------- timer ---------- */
+  .timer {
+    border: 1px solid var(--line); border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+    padding: 14px 14px 12px; text-align: center;
+  }
+  .t-label { font-size: 9.5px; letter-spacing: 0.3em; color: var(--dim); }
+  .t-clock {
+    font-size: clamp(2.3rem, 13vw, 3.6rem); font-weight: 700; line-height: 1.05;
+    letter-spacing: -0.02em; margin: 6px 0 6px;
+    background: linear-gradient(180deg, #fff 22%, #ff9db0 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .t-clock.dead { background: linear-gradient(180deg, #ff8a3d, #ff2d55); -webkit-background-clip: text; background-clip: text; }
+  .t-sub { font-size: 11px; color: var(--dim); line-height: 1.5; }
+  .t-sub b { color: var(--txt); font-weight: 600; }
+
+  /* ---------- generic panel ---------- */
+  .card { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 12px; }
+  .card h2 { font-size: 9.5px; letter-spacing: 0.22em; color: var(--dim); font-weight: 500; margin-bottom: 10px; }
+
+  /* ---------- obs ---------- */
+  .obs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn {
+    font-family: inherit; font-size: 12px; letter-spacing: 0.1em; font-weight: 600;
+    color: var(--txt); background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 10px; cursor: pointer; min-height: 48px;
+    transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.11); }
+  .btn:disabled { opacity: 0.4; }
+  .btn.go { color: #c8ffe6; border-color: rgba(55, 227, 155, 0.45); background: rgba(55, 227, 155, 0.12); }
+  .btn.stop { color: #ffd0d8; border-color: rgba(255, 45, 85, 0.45); background: rgba(255, 45, 85, 0.12); }
+  .obs-status { margin-top: 9px; font-size: 10.5px; color: var(--dim); text-align: center; }
+  .obs-status b { color: var(--txt); font-weight: 600; }
+  .obs-health { margin-top: 8px; font-size: 10px; line-height: 1.5; color: #5f5f6d; }
+  .obs-health.good { color: var(--ok); }
+  .obs-health.warn { color: #e8c047; }
+  .obs-health.bad { color: #ff5c72; }
+
+  /* ---------- youtube latency ---------- */
+  .lat-status { font-size: 11px; line-height: 1.5; color: var(--dim); }
+  .lat-status.good { color: var(--ok); }
+  .lat-status.warn { color: #e8c047; }
+  .lat-status.bad { color: #ff5c72; }
+  .lat-meta { margin-top: 6px; font-size: 9.5px; color: #5f5f6d; }
+  .lat-meta a { color: var(--dim); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .lat-switch { width: 100%; margin-top: 10px; font-size: 11px; padding: 12px 10px; min-height: 44px; }
+
+  /* ---------- permanent live link ---------- */
+  .link-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  .link-btn {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 48px; padding: 0 12px; border-radius: 12px;
+    border: 1px solid rgba(255, 45, 85, 0.45); background: rgba(255, 45, 85, 0.12);
+    color: #ffd0d8; font-size: 11.5px; letter-spacing: 0.04em; text-decoration: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .link-btn:active { transform: scale(0.98); background: rgba(255, 45, 85, 0.2); }
+  .copy-btn { min-height: 48px; padding: 0 16px; font-size: 11px; }
+
+  /* ---------- scenes ---------- */
+  .scenes { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .scenes::-webkit-scrollbar { display: none; }
+  .scene {
+    flex: 0 0 auto; font-family: inherit; font-size: 11.5px; color: var(--dim);
+    background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line);
+    border-radius: 999px; padding: 11px 15px; cursor: pointer; min-height: 42px;
+  }
+  .scene:active { transform: scale(0.97); }
+  .scene.on { color: #fff; border-color: rgba(255, 45, 85, 0.6); background: rgba(255, 45, 85, 0.18); font-weight: 600; }
+  .scene-hint { margin-top: 8px; font-size: 10px; color: #5f5f6d; }
+
+  /* ---------- boosts ---------- */
+  .boosts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .boost {
+    font-family: inherit; color: var(--txt); cursor: pointer;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(255, 255, 255, 0.045);
+    padding: 12px 8px; display: grid; gap: 3px; justify-items: center;
+    min-height: 74px;
+  }
+  .boost:active { transform: scale(0.97); background: rgba(255, 255, 255, 0.1); }
+  .boost .b-lab { font-size: 8.5px; letter-spacing: 0.14em; color: var(--dim); }
+  .boost .b-amt { font-size: 19px; font-weight: 700; }
+  .boost.sub { border-color: rgba(255, 45, 85, 0.3); }
+  .boost.sub .b-amt { color: #ff6b85; }
+  .boost.kofi { border-color: rgba(41, 171, 224, 0.3); }
+  .boost.kofi .b-amt { color: #5cc8f2; }
+  .boost.like { border-color: rgba(255, 138, 61, 0.3); }
+  .boost.like .b-amt { color: #ffa76b; }
+  .undo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .undo-row .btn { font-size: 10.5px; padding: 10px; min-height: 42px; }
+
+  /* ---------- music ---------- */
+  .music-top { display: flex; align-items: baseline; justify-content: space-between; }
+  .music-val { font-size: 13px; font-weight: 700; }
+  .music-val.muted { color: #ff8a9c; }
+  .slider-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin-top: 8px; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14); outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--txt); border: none;
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+  }
+  input[type="range"]:disabled { opacity: 0.35; }
+  .mute-btn { min-width: 92px; min-height: 44px; font-size: 11px; padding: 10px 12px; }
+  .mute-btn.on { color: #ffd8e1; border-color: rgba(255, 45, 85, 0.5); background: rgba(255, 45, 85, 0.16); }
+
+  /* ---------- stats ---------- */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 9px 10px; }
+  .stat .s-val { font-size: 17px; font-weight: 700; }
+  .stat .s-lab { font-size: 8.5px; letter-spacing: 0.14em; color: var(--dim); }
+
+  .feed { font-size: 10.5px; color: #9a9aa8; display: grid; gap: 4px; }
+  .feed div { display: flex; justify-content: space-between; gap: 8px; }
+  .feed b { color: #d7d7e0; font-weight: 600; }
+  .feed span { color: #5f5f6d; }
+
+  .flash {
+    position: fixed; left: 50%; bottom: 18%; transform: translateX(-50%);
+    padding: 10px 18px; border-radius: 999px;
+    background: rgba(10, 10, 14, 0.92); border: 1px solid var(--line);
+    font-size: 12px; letter-spacing: 0.08em; opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease; white-space: nowrap;
+  }
+  .flash.on { opacity: 1; }
+  .foot { text-align: center; font-size: 9.5px; color: #4d4d58; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+
+  <div class="top">
+    <div class="brand">EMILLI<em>REMOTE</em></div>
+    <span id="statusChip" class="chip">CONNECTING</span>
+  </div>
+
+  <section class="timer">
+    <div class="t-label" id="tLabel">TIME LEFT ON STREAM</div>
+    <div class="t-clock" id="tClock">--:--:--</div>
+    <div class="t-sub" id="tSub">connecting to the timer…</div>
+  </section>
+
+  <section class="card">
+    <h2>OBS</h2>
+    <div class="obs-row">
+      <button class="btn go" id="obsStart">GO LIVE</button>
+      <button class="btn stop" id="obsStop">END STREAM</button>
+    </div>
+    <div class="obs-status" id="obsInfo">checking OBS…</div>
+    <div class="obs-health" id="obsHealth">stream: —</div>
+  </section>
+
+  <section class="card">
+    <h2>YOUTUBE LATENCY</h2>
+    <div class="lat-status warn" id="ytLat">latency: not read yet</div>
+    <div class="lat-meta" id="ytLatMeta"></div>
+    <button class="btn lat-switch" id="ytUltra">RESTART → ULTRA-LOW</button>
+    <button class="btn lat-switch" id="autoUltra">AUTO-FIX: OFF</button>
+  </section>
+
+  <section class="card">
+    <h2>LIVE LINK</h2>
+    <div class="link-row">
+      <a class="link-btn" id="permLink" href="https://www.youtube.com/@EmilliFTL/live" target="_blank" rel="noopener">@EmilliFTL/live ↗</a>
+      <button class="btn copy-btn" id="copyLink">COPY LINK</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>SCENES</h2>
+    <div class="scenes" id="scenes"><span class="scene-hint">loading…</span></div>
+    <div class="scene-hint" id="sceneHint"></div>
+  </section>
+
+  <section class="card">
+    <h2>BOOSTS</h2>
+    <div class="boosts">
+      <button class="boost sub" data-boost="sub"><span class="b-lab">SUB</span><span class="b-amt">+5:00</span></button>
+      <button class="boost kofi" data-boost="kofi"><span class="b-lab">KO-FI</span><span class="b-amt">+30:00</span></button>
+      <button class="boost like" data-boost="like"><span class="b-lab">LIKE</span><span class="b-amt">+0:30</span></button>
+    </div>
+    <div class="undo-row">
+      <button class="btn" id="undoBtn">UNDO LAST</button>
+      <button class="btn" id="ytSync">SYNC YOUTUBE</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>YTPMV MUSIC</h2>
+    <div class="music-top">
+      <span class="music-val" id="mixVal">OBS off</span>
+      <span class="music-val" id="mixHint" style="font-size:10px;font-weight:400;color:#8d8d9b">fader = OBS input</span>
+    </div>
+    <div class="slider-row">
+      <input type="range" id="mixSlider" min="-60" max="0" step="1" value="0" aria-label="YTPMV music volume" disabled />
+      <button class="btn mute-btn" id="mixMute" disabled>MUTE</button>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><div class="s-val" id="statSub">0</div><div class="s-lab">SUBS</div></div>
+    <div class="stat"><div class="s-val" id="statKofi">0</div><div class="s-lab">DONOS</div></div>
+    <div class="stat"><div class="s-val" id="statLike">0</div><div class="s-lab">LIKES</div></div>
+  </section>
+
+  <section class="card">
+    <h2>ACTIVITY</h2>
+    <div class="feed" id="feed"><div><span>nothing yet</span></div></div>
+  </section>
+
+  <div class="flash" id="flash"></div>
+  <div class="foot" id="foot"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const BOOSTS = {
+  sub: { label: "SUB", ms: 5 * 60 * 1000 },
+  kofi: { label: "KO-FI", ms: 30 * 60 * 1000 },
+  like: { label: "LIKE", ms: 30 * 1000 },
+};
+
+let state = null;
+let offset = 0;
+let mix = { ready: false, muted: false, db: 0 };
+let scenes = [];
+let currentScene = "";
+let latMetaKey = null; // what the latency card's second line currently shows
+// The permanent live alias: always opens whatever the channel is live with, so
+// it survives a broadcast restart. Kept in sync with youtube.handle below.
+let liveLink = "https://www.youtube.com/@EmilliFTL/live";
+let liveHandle = "";
+
+/* ---------------- helpers ---------------- */
+function clockText(ms) {
+  const t = Math.max(0, Math.floor(Math.abs(ms) / 1000));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return `${ms < 0 ? "-" : ""}${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+function hhmm(d) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+function dayLabel(d) {
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return "";
+  const tomorrow = new Date(today.getTime() + 86400000);
+  if (d.toDateString() === tomorrow.toDateString()) return "tomorrow ";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " ";
+}
+function ago(ms) {
+  const s = Math.max(0, Math.round((Date.now() + offset - ms) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.round(m / 60)}h ago`;
+}
+function shortDur(ms) {
+  const t = Math.round(Math.abs(ms) / 1000);
+  const h = Math.floor(t / 3600), m = Math.round((t % 3600) / 60);
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+function boostText(ms) {
+  const t = Math.round(ms / 1000);
+  if (t >= 3600) return `+${Math.floor(t / 3600)}h`;
+  if (t >= 60) return `+${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+  return `+0:${String(t).padStart(2, "0")}`;
+}
+
+let flashTimer = null;
+function flash(text) {
+  const el = $("flash");
+  el.textContent = text;
+  el.classList.add("on");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove("on"), 1500);
+}
+
+async function api(path, body) {
+  let r;
+  try {
+    r = await fetch(path, {
+      method: body === undefined ? "GET" : "POST",
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    return { ok: false, error: "no connection" };
+  }
+  const data = (await r.json().catch(() => ({}))) || {};
+  if (data.state) applyState(data.state);
+  return data;
+}
+
+function applyState(s) {
+  state = s;
+  offset = s.serverNow - Date.now();
+  render();
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  if (!state) return;
+  const now = Date.now() + offset;
+  const bank = state.baseMs + state.addedMs;
+  const chip = $("statusChip");
+
+  if (!state.startedAt) {
+    const start = new Date(state.startAt);
+    const left = start.getTime() + bank - now;
+    $("tLabel").textContent = "STREAM ENDS IN";
+    $("tClock").textContent = clockText(left);
+    $("tClock").className = "t-clock" + (left <= 0 ? " dead" : "");
+    $("tSub").innerHTML = `goes live <b>${dayLabel(start)}${hhmm(start)}</b>`;
+    chip.textContent = "PRE-STREAM";
+    chip.className = "chip";
+  } else {
+    const left = bank - (now - state.startedAt);
+    const end = new Date(state.startedAt + bank);
+    $("tLabel").textContent = left <= 0 ? "TIME'S UP" : "TIME LEFT ON STREAM";
+    $("tClock").textContent = clockText(left);
+    $("tClock").className = "t-clock" + (left <= 0 ? " dead" : "");
+    $("tSub").innerHTML = `ends <b>${dayLabel(end)}${hhmm(end)}</b> · ${shortDur(bank)} bank`;
+    chip.textContent = left <= 0 ? "OFF AIR" : "LIVE";
+    chip.className = "chip " + (left <= 0 ? "over" : "live");
+  }
+
+  $("statSub").textContent = state.counts.sub || 0;
+  $("statKofi").textContent = state.counts.kofi || 0;
+  $("statLike").textContent = state.counts.like || 0;
+  $("undoBtn").disabled = !state.log.length;
+
+  const ob = state.integrations.obs || {};
+  if (!ob.enabled) $("obsInfo").textContent = "OBS control is off in config.json";
+  else if (!ob.connected) $("obsInfo").textContent = ob.error || "OBS not connected";
+  else if (ob.streaming) $("obsInfo").innerHTML = "<b>LIVE</b> · auto-stops at zero";
+  else if (ob.held) $("obsInfo").textContent = "held after manual END · press GO LIVE";
+  else $("obsInfo").textContent = "connected · not streaming";
+  $("obsStart").disabled = !ob.connected;
+  $("obsStop").disabled = !ob.connected;
+
+  // Stream health from GetStreamStatus — the numbers that decide whether
+  // ultra-low latency will hold on this link (it has no buffer to hide a
+  // wobbling encoder feed). Green = under 1% skipped and no reconnects.
+  const h = ob.health;
+  const hEl = $("obsHealth");
+  if (!ob.connected) {
+    hEl.className = "obs-health";
+    hEl.textContent = "stream: —";
+  } else if (!ob.streaming) {
+    hEl.className = "obs-health";
+    hEl.textContent = "stream: — · not streaming";
+  } else if (!h || !h.ok) {
+    hEl.className = "obs-health warn";
+    hEl.textContent = "stream: reading OBS…";
+  } else {
+    const pct = Number(h.skippedPct || 0);
+    const re = Number(h.reconnects || 0);
+    const cong = Number(h.congestion || 0);
+    // Skipped frames come from the encoder/render side; reconnects and
+    // congestion are the network side. Either can spoil ultra-low.
+    const cls =
+      h.reconnecting || re >= 2 || pct >= 5 || cong > 0.05
+        ? "bad"
+        : re === 1 || pct >= 1 || cong > 0.02
+          ? "warn"
+          : "good";
+    hEl.className = "obs-health " + cls;
+    hEl.textContent =
+      `stream: ${h.bitrateKbps == null ? "—" : h.bitrateKbps + " kbps"}` +
+      ` · skipped ${pct.toFixed(2)}% (${compactNum(h.skipped)}/${compactNum(h.total)})` +
+      ` · ${re} reconnect${re === 1 ? "" : "s"}`;
+  }
+
+  // YouTube's latency class for THIS broadcast, read after every stream start.
+  // Same states as the desktop dashboard; the video id is a tap target here
+  // because a phone cannot hover for the tooltip.
+  const lat = (state.integrations.youtube || {}).latency || {};
+  const latName = { ULTRA_LOW: "Ultra-low", LOW: "Low", NORMAL: "Normal" }[lat.class] || lat.class;
+  let latCls = "lat-status";
+  let latTxt;
+  if (lat.class) {
+    const ultra = lat.class === "ULTRA_LOW";
+    latCls += ultra ? " good" : " warn";
+    latTxt =
+      `latency: ${latName}` +
+      (ultra ? " ✓" : " — not ultra-low") +
+      (lat.at ? ` · read ${ago(lat.at)}` : "");
+  } else if (lat.error && !lat.startedAt) {
+    latCls += " bad";
+    latTxt = `latency: ${lat.error}`;
+  } else if (lat.startedAt) {
+    latCls += lat.error ? " bad" : " warn";
+    latTxt = lat.error ? `latency: ${lat.error} · retrying` : "latency: reading after stream start…";
+  } else {
+    latCls += " warn";
+    latTxt = "latency: not read yet — reads after every stream start";
+  }
+  // A switch runs in the background on the server (end → create → bind → go
+  // live, ~30 s). Its step belongs on this card, which is the one that says
+  // whether the new broadcast actually came up Ultra-low.
+  const sw = (state.integrations.youtube || {}).switch || {};
+  const switching = !!sw.step && !sw.done;
+  if (sw.step && sw.ok === false && Date.now() - sw.at < 10 * 60 * 1000) {
+    latCls = "lat-status bad";
+    latTxt = `switch failed: ${sw.error || "unknown"}`;
+  } else if (switching) {
+    latCls = "lat-status warn";
+    latTxt = `switching to ultra-low · ${sw.step}…`;
+  }
+  // Auto-fix: on = after every GO LIVE, switch again if the class is not
+  // Ultra-low. GAVE UP means the allowed attempts ran out — the Studio stream
+  // setting is the thing to look at then.
+  const au = (state.integrations.youtube || {}).autoUltra || {};
+  const auBtn = $("autoUltra");
+  auBtn.textContent = au.gaveUp ? "AUTO-FIX: GAVE UP" : au.enabled ? "AUTO-FIX: ON" : "AUTO-FIX: OFF";
+  auBtn.disabled = !(state.integrations.youtube || {}).oauthConnected;
+  if (au.gaveUp) latTxt += " · auto-fix gave up";
+
+  $("ytUltra").disabled = switching || !(state.integrations.youtube || {}).oauthConnected;
+  $("ytLat").className = latCls;
+  $("ytLat").textContent = latTxt;
+  // Follow the configured handle rather than a hard-coded one, but only touch
+  // the markup when it actually changes — this runs four times a second.
+  const handle = (state.integrations.youtube || {}).handle || "";
+  if (handle && handle !== liveHandle) {
+    liveHandle = handle;
+    liveLink = `https://www.youtube.com/@${handle}/live`;
+    const link = $("permLink");
+    link.href = liveLink;
+    link.textContent = `@${handle}/live ↗`;
+  }
+
+  // Only touch the second line when it changes: render() runs four times a
+  // second, and replacing the link that often swallows a tap on it.
+  const latMeta = $("ytLatMeta");
+  const metaKey = `${lat.videoId || ""}|${lat.class || ""}|${lat.error || ""}`;
+  if (metaKey !== latMetaKey) {
+    latMetaKey = metaKey;
+    latMeta.innerHTML = "";
+    if (lat.videoId) {
+      const a = document.createElement("a");
+      a.href = `https://www.youtube.com/live/${lat.videoId}`;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = `video ${lat.videoId} ↗`;
+      latMeta.appendChild(a);
+    } else if (!lat.class && !lat.error) {
+      const s = document.createElement("span");
+      s.textContent = "reads 10s after every GO LIVE";
+      latMeta.appendChild(s);
+    }
+  }
+
+  const items = [...state.log].reverse().slice(0, 4);
+  const feed = $("feed");
+  feed.innerHTML = "";
+  if (!items.length) {
+    const d = document.createElement("div");
+    const s = document.createElement("span");
+    s.textContent = "nothing yet";
+    d.appendChild(s);
+    feed.appendChild(d);
+  }
+  for (const e of items) {
+    const b = BOOSTS[e.type];
+    if (!b) continue;
+    const row = document.createElement("div");
+    const name = document.createElement("b");
+    name.textContent = b.label + (e.name ? " · " + e.name : "");
+    const amt = document.createElement("span");
+    amt.textContent = boostText(e.amountMs) + " · " + hhmm(new Date(e.at));
+    row.append(name, amt);
+    feed.appendChild(row);
+  }
+}
+
+/* ---------------- permanent live link ---------------- */
+$("copyLink").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(liveLink);
+    flash("LIVE LINK COPIED");
+  } catch {
+    // The clipboard API needs https or localhost; over plain http the old
+    // execCommand path still works.
+    const ta = document.createElement("textarea");
+    ta.value = liveLink;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    flash(ok ? "LIVE LINK COPIED" : "copy blocked — long-press the link");
+  }
+});
+
+/* 66 644 → "66.6k", 3 432 768 → "3.4M": keep the health line to one row. */
+function compactNum(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
+  if (v >= 1e4) return (v / 1e3).toFixed(1) + "k";
+  return String(v);
+}
+
+/* ---------------- latency switch ---------------- */
+$("ytUltra").addEventListener("click", async () => {
+  const ok = confirm(
+    "End this broadcast and start a new one with Ultra-low latency?\n\n" +
+      "The current live link becomes the replay — the new stream gets a new link. " +
+      "@EmilliFTL/live always follows whatever is live."
+  );
+  if (!ok) return;
+  $("ytUltra").disabled = true;
+  const r = await api("/api/youtube/restart", { latency: "ultraLow" });
+  if (!r.ok) {
+    $("ytUltra").disabled = false;
+    flash("SWITCH: " + (r.error || "failed"));
+  } else flash("SWITCHING TO ULTRA-LOW…");
+});
+
+$("autoUltra").addEventListener("click", async () => {
+  const on = !(((state.integrations.youtube || {}).autoUltra || {}).enabled);
+  $("autoUltra").disabled = true;
+  const r = await api("/api/youtube/auto-ultra", { enabled: on });
+  if (!r.ok) {
+    $("autoUltra").disabled = false;
+    flash("AUTO-FIX: " + (r.error || "failed"));
+  } else flash(on ? "AUTO-FIX ON" : "AUTO-FIX OFF");
+});
+
+/* ---------------- OBS ---------------- */
+async function loadScenes() {
+  const r = await api("/api/obs/scenes");
+  const box = $("scenes");
+  if (!r.ok) {
+    box.innerHTML = "";
+    const s = document.createElement("span");
+    s.className = "scene-hint";
+    s.textContent = r.error || "scenes unavailable";
+    box.appendChild(s);
+    $("sceneHint").textContent = "";
+    return;
+  }
+  scenes = r.scenes || [];
+  currentScene = r.current || "";
+  box.innerHTML = "";
+  for (const name of scenes) {
+    const b = document.createElement("button");
+    b.className = "scene" + (name === currentScene ? " on" : "");
+    b.textContent = name;
+    b.addEventListener("click", async () => {
+      if (name === currentScene) return;
+      const res = await api("/api/obs/scene", { sceneName: name });
+      if (res.ok) {
+        currentScene = name;
+        flash("SCENE: " + name);
+        loadScenes();
+      } else flash("SCENE FAILED: " + (res.error || "?"));
+    });
+    box.appendChild(b);
+  }
+  $("sceneHint").textContent = currentScene ? "program: " + currentScene : "";
+}
+
+$("obsStart").addEventListener("click", async () => {
+  const r = await api("/api/obs/start", {});
+  flash(r.ok ? "OBS: GO LIVE" : "OBS: " + (r.error || "failed"));
+});
+$("obsStop").addEventListener("click", async () => {
+  const r = await api("/api/obs/stop", {});
+  flash(r.ok ? "OBS: STREAM ENDED" : "OBS: " + (r.error || "failed"));
+});
+
+/* ---------------- boosts ---------------- */
+document.querySelectorAll("[data-boost]").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const type = btn.dataset.boost;
+    const r = await api("/api/boost", { type });
+    flash(r.ok ? `${BOOSTS[type].label} ${boostText(BOOSTS[type].ms)}` : "failed");
+  });
+});
+$("undoBtn").addEventListener("click", async () => {
+  const r = await api("/api/undo", {});
+  flash(r.ok ? "UNDO" : "nothing to undo");
+});
+$("ytSync").addEventListener("click", async () => {
+  flash("syncing youtube…");
+  const r = await api("/api/youtube/check", {});
+  flash(r.ok ? "YOUTUBE SYNCED" : "YT: " + (r.error || r.skipped || "failed"));
+});
+
+/* ---------------- music fader ---------------- */
+function mixText() {
+  if (!mix.ready) return "OBS off";
+  if (mix.muted) return "MUTED";
+  if (mix.db <= -59.5) return "−∞ dB";
+  return `${mix.db > 0 ? "+" : ""}${Math.round(mix.db)} dB`;
+}
+function renderMix() {
+  const val = $("mixVal");
+  val.textContent = mixText();
+  val.classList.toggle("muted", mix.muted || !mix.ready);
+  const s = $("mixSlider");
+  s.disabled = !mix.ready;
+  if (document.activeElement !== s) s.value = String(Math.max(-60, Math.min(0, Math.round(mix.db))));
+  const b = $("mixMute");
+  b.textContent = mix.muted ? "UNMUTE" : "MUTE";
+  b.classList.toggle("on", mix.muted);
+  b.disabled = !mix.ready;
+}
+async function loadMix() {
+  const r = await api("/api/ytpmvs/audio");
+  if (r.ok) mix = { ready: true, muted: !!r.muted, db: Number(r.volumeDb ?? 0) };
+  else mix.ready = false;
+  renderMix();
+}
+let mixQueue = null, mixTimer = null;
+function sendMix(patch) {
+  mixQueue = { ...(mixQueue || {}), ...patch };
+  clearTimeout(mixTimer);
+  mixTimer = setTimeout(async () => {
+    const body = mixQueue;
+    mixQueue = null;
+    const r = await api("/api/ytpmvs/audio", body);
+    if (r.ok) {
+      mix = { ready: true, muted: !!r.muted, db: Number(r.volumeDb ?? mix.db) };
+      renderMix();
+    } else {
+      flash("MUSIC: " + (r.error || "failed"));
+      loadMix();
+    }
+  }, 120);
+}
+$("mixSlider").addEventListener("input", (e) => {
+  const db = Number(e.target.value);
+  mix.db = db;
+  mix.ready = true;
+  renderMix();
+  sendMix({ volumeMul: Math.pow(10, db / 20) });
+});
+$("mixMute").addEventListener("click", () => {
+  mix.muted = !mix.muted;
+  renderMix();
+  sendMix({ muted: mix.muted });
+});
+
+/* ---------------- live updates ---------------- */
+// SSE is instant on the house Wi-Fi, but Cloudflare's free quick tunnel
+// buffers event-stream bodies, so over mobile data the pushes may only arrive
+// in bursts. A poll every 2.5 s keeps the clock and OBS state honest; it stops
+// itself as soon as SSE proves it is delivering.
+let pollTimer = null;
+let sseSeenAt = 0;
+
+async function pollState() {
+  const s = await api("/api/state");
+  if (s && s.serverNow) applyState(s);
+}
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(pollState, 2500);
+}
+function stopPolling() {
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+function connect() {
+  const es = new EventSource("/api/events");
+  es.addEventListener("state", (e) => {
+    applyState(JSON.parse(e.data));
+    sseSeenAt = Date.now();
+    stopPolling(); // a push arrived, so polling is redundant again
+  });
+  es.addEventListener("message", (e) => {
+    const n = JSON.parse(e.data);
+    if (n.state) applyState(n.state);
+    if (n.kind === "boost" && n.source !== "manual") {
+      flash(`${n.type === "kofi" ? n.amountText || "DONO" : BOOSTS[n.type].label} ${boostText(n.amountMs)}`);
+    }
+  });
+  es.onerror = () => {
+    $("statusChip").textContent = "RECONNECTING";
+    $("statusChip").className = "chip over";
+    startPolling();
+  };
+  // If nothing arrives over SSE within 5 s (buffered tunnel), poll instead.
+  setTimeout(() => {
+    if (!sseSeenAt) startPolling();
+  }, 5000);
+  // Phones sleep; make sure the scene list and fader catch up when we wake.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    loadScenes();
+    loadMix();
+  });
+}
+
+(function footNote() {
+  const h = location.host || "";
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])/.test(h);
+  const foot = $("foot");
+  foot.textContent = local
+    ? "reach this from your phone at http://<your-pc-ip>:8123/mobile.html"
+    : h + " · browser menu → Add to Home screen";
+  const app = document.createElement("a");
+  app.href = "/emilli-remote.apk";
+  app.textContent = "ANDROID APP";
+  app.style.cssText = "color:#8d8d9b;margin-left:8px;text-decoration:underline";
+  foot.append(" · ", app);
+})();
+
+api("/api/state").then(() => {
+  connect();
+  loadScenes();
+  loadMix();
+});
+setInterval(render, 250);
+// Safety net: if SSE has gone quiet for a while, fall back to polling again.
+setInterval(() => {
+  if (!document.hidden && (!sseSeenAt || Date.now() - sseSeenAt > 30000)) startPolling();
+}, 10000);
+setInterval(() => { if (!document.hidden) loadScenes(); }, 30000);
+setInterval(() => { if (!document.hidden && document.activeElement !== $("mixSlider")) loadMix(); }, 20000);
+</script>
+</body>
+</html>

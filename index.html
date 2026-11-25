@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Emilli FTL — 24H Stream Timer</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+
+  <header class="chrome">
+    <div class="brand">
+      <span class="dot"></span>
+      <span class="brand-txt">EMILLI FTL<em>24H STREAM</em></span>
+    </div>
+    <div class="hdr-right">
+      <span id="statusChip" class="chip">PRE-STREAM</span>
+      <a class="link" href="https://www.youtube.com/@EmilliFTL" target="_blank" rel="noopener">youtube/@EmilliFTL ↗</a>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="stage-label" id="stageLabel">STREAM STARTS IN</div>
+    <div class="clock" id="clock">24:00:00</div>
+    <div class="stage-sub" id="stageSub">connecting to server…</div>
+    <div class="flash" id="flash" aria-hidden="true"></div>
+  </main>
+
+  <section class="boosts chrome">
+    <button class="boost sub" data-boost="sub">
+      <span class="b-title">SUBS</span>
+      <span class="b-amt">+5:00</span>
+      <span class="b-key">S</span>
+    </button>
+    <button class="boost kofi" data-boost="kofi">
+      <span class="b-title">KO-FI DONO</span>
+      <span class="b-amt">+30:00</span>
+      <span class="b-key">D</span>
+    </button>
+    <button class="boost like" data-boost="like">
+      <span class="b-title">VIDEO LIKE</span>
+      <span class="b-amt">+0:30</span>
+      <span class="b-key">L</span>
+    </button>
+    <button class="boost undo" id="undoBtn" title="Undo last boost (Z)">
+      <span class="b-title">UNDO</span>
+      <span class="b-amt">−</span>
+      <span class="b-key">Z</span>
+    </button>
+  </section>
+
+  <section class="stats chrome" id="stats">
+    <div class="stat"><span class="s-val" id="statSub">0</span><span class="s-lab">SUBS</span></div>
+    <div class="stat"><span class="s-val" id="statKofi">0</span><span class="s-lab">DONATIONS</span></div>
+    <div class="stat"><span class="s-val" id="statLike">0</span><span class="s-lab">LIKES</span></div>
+    <div class="stat"><span class="s-val" id="statAdded">0m</span><span class="s-lab">TIME ADDED</span></div>
+  </section>
+
+  <section class="mixer chrome">
+    <div class="mix-head">
+      <span class="mix-title">YTPMV MUSIC</span>
+      <span class="mix-val" id="mixVal">OBS off</span>
+    </div>
+    <input type="range" id="mixSlider" class="mix-slider" min="-60" max="0" step="1" value="0"
+           aria-label="YTPMV music volume" disabled />
+    <button class="mini" id="mixMute" disabled>MUTE</button>
+  </section>
+
+  <section class="integ chrome">
+    <div class="int">
+      <span id="ytDot" class="int-dot off"></span>
+      <div class="int-txt">
+        <b>YOUTUBE</b>
+        <small id="ytInfo">not configured</small>
+        <small id="ytSubs" class="yt-subs">subs: unknown</small>
+        <small id="ytSc" class="yt-subs sc">socialcounts: waiting</small>
+        <small id="ytLat" class="yt-subs lat">latency: not read yet</small>
+      </div>
+    </div>
+    <div class="int">
+      <span id="kofiDot" class="int-dot off"></span>
+      <div class="int-txt">
+        <b>KO-FI</b>
+        <small id="kofiInfo">waiting for setup</small>
+      </div>
+    </div>
+    <div class="int">
+      <span id="obsDot" class="int-dot off"></span>
+      <div class="int-txt">
+        <b>OBS</b>
+        <small id="obsInfo">not connected</small>
+        <small id="obsHealth" class="yt-subs lat">stream: —</small>
+      </div>
+    </div>
+    <div class="int-actions">
+      <a class="mini yt-link" id="permLink" href="https://www.youtube.com/@EmilliFTL/live"
+         target="_blank" rel="noopener"
+         title="permanent live link — always opens whatever is live, so it survives a restart">@EmilliFTL/live ↗</a>
+      <button class="mini" id="copyLink">COPY LINK</button>
+      <button class="mini" id="ytUltra"
+              title="end this broadcast and start a new one with Ultra-low latency (~2–5 s)">RESTART ULTRA-LOW</button>
+      <button class="mini" id="autoUltra"
+              title="after every GO LIVE, read the class and switch again if the broadcast is not Ultra-low">AUTO ULTRA: OFF</button>
+      <button class="mini" id="obsStart">GO LIVE</button>
+      <button class="mini danger" id="obsStop">END</button>
+      <button class="mini" id="ytCheck">SYNC YT NOW</button>
+      <button class="mini" id="testSub">TEST SUB</button>
+      <button class="mini" id="testKofi">TEST DONO</button>
+      <button class="mini" id="testLike">TEST LIKE</button>
+    </div>
+  </section>
+
+  <section class="integ chrome pin-card">
+    <div class="mix-head">
+      <span class="mix-title">PINNED CHAT NOTE</span>
+      <span class="mix-val" id="pinState">—</span>
+    </div>
+    <input type="text" id="pinText" class="pin-input" maxlength="200"
+           placeholder="!discord · !sub · anything you want shown all stream" />
+    <div class="int-actions">
+      <button class="mini" id="pinSend">POST NOW</button>
+      <button class="mini" id="pinAuto">AUTO ON GO-LIVE: OFF</button>
+      <a class="mini yt-link" id="pinStudio" href="https://studio.youtube.com"
+         target="_blank" rel="noopener" title="opens this broadcast in Studio, where the Pin button lives">PIN IN STUDIO ↗</a>
+    </div>
+    <small id="pinHelp" class="yt-subs lat">
+      YouTube has no pin API — the note is posted for you as the channel, the pin itself is one click in Studio.
+    </small>
+  </section>
+
+  <section class="integ chrome apk-card">
+    <div class="mix-head">
+      <span class="mix-title">APK DOWNLOADS</span>
+      <span class="mix-val" id="apkState">—</span>
+    </div>
+    <div class="int-actions">
+      <a class="mini yt-link" id="apkPublic" href="https://emilli-remote-apk-rc7iae.freebuff.site/"
+         target="_blank" rel="noopener" title="public page with the token-free APK">PUBLIC LINK ↗</a>
+      <a class="mini yt-link" id="apkLocal" href="/emilli-remote.apk" download>THIS PC ↓</a>
+      <button class="mini" id="apkCopy">COPY PUBLIC LINK</button>
+      <a class="mini yt-link" id="apkRepo" href="https://github.com/NeofastFTL-Dev/YTLiveDash/releases/latest"
+         target="_blank" rel="noopener" title="GitHub release built by the Actions workflow">GITHUB RELEASE ↗</a>
+    </div>
+    <small id="apkHelp" class="yt-subs lat">
+      the copy this PC serves carries the tunnel token · any copy you share is built token-free
+    </small>
+  </section>
+
+  <section class="feed chrome">
+    <div class="feed-head">
+      <h2>ACTIVITY</h2>
+      <span id="feedEmpty" class="empty">nothing yet — hit S / D / L when it happens</span>
+    </div>
+    <ul id="feed"></ul>
+  </section>
+
+  <footer class="chrome">
+    <div class="ctl">
+      <label for="startAt">START</label>
+      <input type="datetime-local" id="startAt" />
+      <button id="startNow" class="mini">START NOW</button>
+      <button id="resetBtn" class="mini danger">RESET 24H</button>
+    </div>
+    <div class="ctl">
+      <button id="soundBtn" class="mini" aria-pressed="true">SOUND: ON</button>
+      <button id="overlayBtn" class="mini">OBS OVERLAY ↗</button>
+      <a class="mini" href="mobile.html" target="_blank" rel="noopener">PHONE REMOTE ↗</a>
+      <a class="mini kofi-link" href="https://ko-fi.com/emilliftl" target="_blank" rel="noopener">KO-FI ↗</a>
+    </div>
+  </footer>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

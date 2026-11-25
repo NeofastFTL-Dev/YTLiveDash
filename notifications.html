@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Emilli FTL — Notifications</title>
+<style>
+  :root {
+    --yt: #ff2d55;
+    --kofi: #29abe0;
+    --like: #ff8a3d;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --card: rgba(10, 10, 14, 0.88);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  /* Transparency must be explicit on the root, or OBS's Chromium composites
+     the page against an opaque matte. */
+  html, body { background-color: transparent !important; }
+  body {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.solid-bg { background-color: #0a0a0f !important; }
+  body.chroma-bg { background-color: #00ff00 !important; }
+
+  /* Position via ?pos=tl|tr|bl|br (default top-left) */
+  #toasts {
+    position: fixed; top: 28px; left: 28px;
+    display: flex; flex-direction: column; gap: 12px;
+    width: 380px;
+  }
+  body.pos-tr #toasts { left: auto; right: 28px; align-items: flex-end; }
+  body.pos-bl #toasts { top: auto; bottom: 28px; flex-direction: column-reverse; }
+  body.pos-br #toasts { top: auto; bottom: 28px; left: auto; right: 28px; flex-direction: column-reverse; align-items: flex-end; }
+
+  .toast {
+    position: relative;
+    display: grid; grid-template-columns: 52px 1fr auto;
+    align-items: center; gap: 14px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 18px 50px -22px rgba(0, 0, 0, 1);
+    overflow: hidden;
+    width: 100%;
+    transform: translateX(-120%);
+    animation: slideIn 0.42s cubic-bezier(0.18, 0.9, 0.3, 1.05) forwards;
+  }
+  body.pos-tr .toast, body.pos-br .toast { transform: translateX(120%); }
+  .toast.out { animation: slideOut 0.42s ease forwards; }
+  @keyframes slideIn { to { transform: translateX(0); } }
+  @keyframes slideOut { to { transform: translateX(-120%); opacity: 0; } }
+  body.pos-tr .toast.out, body.pos-br .toast.out { animation-name: slideOutRight; }
+  @keyframes slideOutRight { to { transform: translateX(120%); opacity: 0; } }
+
+  .toast::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: var(--yt);
+  }
+  .toast.sub::before { background: var(--yt); }
+  .toast.kofi::before { background: var(--kofi); }
+  .toast.like::before { background: var(--like); }
+
+  .ico {
+    width: 52px; height: 52px; border-radius: 12px;
+    display: grid; place-items: center;
+    background: rgba(255, 45, 85, 0.14);
+    border: 1px solid rgba(255, 45, 85, 0.35);
+  }
+  .toast.kofi .ico { background: rgba(41, 171, 224, 0.14); border-color: rgba(41, 171, 224, 0.4); }
+  .toast.like .ico { background: rgba(255, 138, 61, 0.14); border-color: rgba(255, 138, 61, 0.4); }
+  .ico svg { width: 26px; height: 26px; }
+
+  .txt { min-width: 0; }
+  .kicker {
+    font-size: 12px; letter-spacing: 0.16em; color: #ff6b85; text-transform: uppercase;
+  }
+  .toast.kofi .kicker { color: #5cc8f2; }
+  .toast.like .kicker { color: #ffa76b; }
+  .who {
+    font-size: 16px; font-weight: 700; color: #fff; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .msg {
+    font-size: 12.5px; color: #b6b6c4; margin-top: 3px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .amt {
+    font-size: 15px; font-weight: 700; color: #ff6b85;
+    white-space: nowrap; text-align: right;
+  }
+  /* The money is the headline for a tip; the time we gained is a footnote for
+     every type, since the card already says what happened. */
+  .amt .cash { display: block; font-size: 17px; }
+  .amt .time { display: block; font-size: 11.5px; font-weight: 600; opacity: 0.62; letter-spacing: 0.04em; }
+  .toast.kofi .amt { color: #5cc8f2; }
+  .toast.like .amt { color: #ffa76b; }
+  .bar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: rgba(255, 255, 255, 0.16);
+    transform-origin: left;
+    animation: drain 6s linear forwards;
+  }
+  @keyframes drain { to { transform: scaleX(0); } }
+</style>
+</head>
+<body>
+  <div id="toasts"></div>
+
+<script>
+/* Standalone notification overlay (subs, Ko-fi tips, likes). Separate from the
+   timer page so it can be placed/scaled on its own in OBS.
+   Options: ?pos=tl|tr|bl|br, ?sound=0, ?bg=1, ?chroma=1 */
+const qs = new URLSearchParams(location.search);
+const withSound = qs.get("sound") !== "0";
+const $ = (id) => document.getElementById(id);
+
+const pos = qs.get("pos");
+if (["tr", "bl", "br"].includes(pos)) document.body.classList.add(`pos-${pos}`);
+if (qs.get("bg") === "1") document.body.classList.add("solid-bg");
+if (qs.get("chroma") === "1") document.body.classList.add("chroma-bg");
+
+function boostText(ms) {
+  const t = Math.round(ms / 1000);
+  if (t >= 3600) return `+${Math.floor(t / 3600)}h`;
+  if (t >= 60) return `+${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+  return `+0:${String(t).padStart(2, "0")}`;
+}
+
+const ICONS = {
+  sub: '<svg viewBox="0 0 24 24" fill="none" stroke="#ff6b85" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  kofi: '<svg viewBox="0 0 24 24" fill="none" stroke="#5cc8f2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h11v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8z"/><path d="M15 9h2.5a2.5 2.5 0 0 1 0 5H15"/><path d="M6 4c0 1 1 1 1 2M10 3c0 1 1 1 1 2"/></svg>',
+  like: '<svg viewBox="0 0 24 24" fill="none" stroke="#ffa76b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v10H4V10z"/><path d="M7 10l4-7a2 2 0 0 1 3 2l-1 4h5a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 16.6 20H7"/></svg>',
+};
+
+/* What the card says happened. The type is the headline; the time we gained is
+   a footnote, so a viewer reads "SUBSCRIBED" before "+5:00". */
+const ACTIONS = {
+  sub: { label: "SUBSCRIBED", fallback: "Someone" },
+  kofi: { label: "DONATED", fallback: "Someone" },
+  like: { label: "LIKED THE STREAM", fallback: "Someone" },
+};
+
+/* One shared <audio> plays the alert sound for every alert type (sub, Ko-fi,
+   like). Restarting it from 0 on each alert is deliberate: a fresh event cuts
+   the previous jingle rather than stacking two copies of it. */
+const ALERT_SOUND = "/sounds/course-clear.mp3";
+const alertAudio = new Audio(ALERT_SOUND);
+alertAudio.preload = "auto";
+alertAudio.volume = 0.7;
+
+function ping(kind) {
+  if (!withSound) return;
+  try {
+    alertAudio.currentTime = 0;
+    const p = alertAudio.play();
+    // Some CEF builds refuse playback without a user gesture; the card still
+    // shows, so a rejected promise is not an error worth surfacing.
+    if (p && p.catch) p.catch(() => {});
+  } catch { /* ignore */ }
+}
+
+function toast(n) {
+  const el = document.createElement("div");
+  el.className = `toast ${n.type}`;
+  const act = ACTIONS[n.type] || ACTIONS.sub;
+  el.innerHTML = `
+    <div class="ico">${ICONS[n.type] || ICONS.sub}</div>
+    <div class="txt">
+      <div class="kicker">${act.label}${n.test ? " · TEST" : ""}</div>
+      <div class="who"></div>
+      ${n.message ? '<div class="msg"></div>' : ""}
+    </div>
+    <div class="amt"></div>
+    <div class="bar"></div>`;
+  el.querySelector(".who").textContent = n.name || act.fallback;
+  if (n.message) el.querySelector(".msg").textContent = n.message;
+
+  const amt = el.querySelector(".amt");
+  if (n.type === "kofi" && n.amountText) {
+    const cash = document.createElement("span");
+    cash.className = "cash";
+    cash.textContent = n.amountText;
+    amt.appendChild(cash);
+  }
+  const time = document.createElement("span");
+  time.className = "time";
+  time.textContent = boostText(n.amountMs);
+  amt.appendChild(time);
+  $("toasts").prepend(el);
+  ping(n.type);
+  setTimeout(() => {
+    el.classList.add("out");
+    setTimeout(() => el.remove(), 450);
+  }, 6000);
+  while ($("toasts").children.length > 5) $("toasts").lastElementChild.remove();
+}
+
+function connect() {
+  const es = new EventSource("/api/events");
+  es.addEventListener("message", (e) => {
+    const n = JSON.parse(e.data);
+    if (n.kind === "boost") toast(n);
+  });
+  // EventSource reconnects on its own.
+}
+connect();
+</script>
+</body>
+</html>

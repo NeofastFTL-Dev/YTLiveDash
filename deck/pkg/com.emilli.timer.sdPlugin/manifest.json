@@ -1,0 +1,30 @@
+{
+  "SDKVersion": 2,
+  "Name": "Emilli Timer",
+  "Version": "1.0.0",
+  "Author": "Emilli FTL",
+  "UUID": "com.emilli.timer",
+  "Description": "Drives the subathon timer, OBS and the YTPMV music from the Stream Deck.",
+  "Icon": "icons/plugin",
+  "Category": "Emilli",
+  "CategoryIcon": "icons/category",
+  "CodePath": "app.html",
+  "PropertyInspectorPath": "pi.html",
+  "OS": [
+    { "Platform": "windows", "MinimumVersion": "10" },
+    { "Platform": "mac", "MinimumVersion": "10.15" }
+  ],
+  "Software": { "MinimumVersion": "6.0" },
+  "Actions": [
+    {
+      "UUID": "com.emilli.timer.key",
+      "Name": "Stream Control",
+      "Icon": "icons/action",
+      "Tooltip": "One key for the timer, OBS, boosts or the music fader.",
+      "Controllers": ["Keypad"],
+      "States": [{ "Image": "icons/action", "TitleAlignment": "bottom" }],
+      "SupportedInMultiActions": false,
+      "PropertyInspectorPath": "pi.html"
+    }
+  ]
+}
