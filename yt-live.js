@@ -24,6 +24,24 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 function createYtLive({ oauth, streamIdHint = "", streamName = "", log = () => {} }) {
   let cachedStreamId = streamIdHint || null;
 
+  /**
+   * Rewrite a video's title/description.
+   *
+   * A finished broadcast cannot redirect: youtube.com/live/<id> is Google's own
+   * URL and only Google can move it, and YouTube's live-redirect feature only
+   * works at the moment a broadcast ends. The one lever the owner has is the
+   * dead page itself, so the snippet is read first and sent back verbatim apart
+   * from the two fields being changed (videos.update replaces the whole part).
+   */
+  async function updateVideo(videoId, patch) {
+    const cur = await call(`videos?part=snippet&id=${encodeURIComponent(videoId)}`);
+    const item = (cur.items || [])[0];
+    if (!item) throw new Error(`video ${videoId} not found`);
+    const snippet = { ...item.snippet, ...patch };
+    const j = await call("videos?part=snippet", { method: "PUT", body: { id: videoId, snippet } });
+    return (j.items || [])[0] || {};
+  }
+
   async function call(pathAndQuery, { method = "GET", body } = {}) {
     const token = await oauth.getAccessToken();
     const r = await fetch(API + pathAndQuery, {
@@ -248,6 +266,7 @@ function createYtLive({ oauth, streamIdHint = "", streamName = "", log = () => {
     activeBroadcast,
     broadcast,
     updateBroadcast,
+    updateVideo,
     sendChat,
     streamId,
     endBroadcast,
