@@ -117,7 +117,8 @@ public class MainActivity extends Activity {
     // away timer: a reason plus the clock time the stream is back
     private TextView awayStatus;
     private LinearLayout awayPresets, awayDurs;
-    private String awayReason = "at work";
+    private String awayReason = "";
+    private final List<String> awayReasons = new ArrayList<>();
     private JSONObject lastAway;
 
     // alert preview: the same card the OBS overlay draws, rendered on the phone
@@ -503,6 +504,7 @@ public class MainActivity extends Activity {
         findViewById(R.id.awayClear).setOnClickListener(v -> setAway(null, 0, 0));
         buildAwayChoices();
         renderAwayStatus(null);
+        refreshAwayPresets();
         findViewById(R.id.sceneAddText).setOnClickListener(v -> newSceneText());
         findViewById(R.id.sceneAddImage).setOnClickListener(v -> pickPicture());
 
@@ -584,6 +586,7 @@ public class MainActivity extends Activity {
     private void showTab(int index) {
         tab = index;
         if (index != 8) stopLayoutPreview();
+        if (index == 0) refreshAwayPresets();
         TextView[] tabs = {tabLive, tabMusic, tabYoutube, tabSystem, tabTwitch, tabBrb, tabScenes, tabMixer, tabLayout};
         LinearLayout[] panels = {panelLive, panelMusic, panelYoutube, panelSystem, panelTwitch, panelBrb, panelScenes, panelMixer, panelLayout};
         for (int i = 0; i < tabs.length; i++) {
@@ -1859,8 +1862,39 @@ public class MainActivity extends Activity {
 
     /* ------------------------------------------------------------ away timer */
 
-    private static final String[] AWAY_REASONS = {"at work", "outside", "sleeping", "busy"};
     private static final int[] AWAY_MINUTES = {30, 60, 120, 240, 480};
+
+    /**
+     * The reason buttons are the server's list (away.js PRESETS) as /api/away
+     * returns it, so adding a reason is one edit there for both remotes.
+     */
+    private void refreshAwayPresets() {
+        if (api == null) return;
+        final Api a = api;
+        net.execute(() -> {
+            try {
+                final JSONObject r = a.get("/api/away");
+                final JSONArray presets = r.optJSONArray("presets");
+                ui.post(() -> {
+                    List<String> next = new ArrayList<>();
+                    for (int i = 0; presets != null && i < presets.length(); i++) {
+                        String reason = presets.optString(i, "").trim();
+                        if (!reason.isEmpty() && !next.contains(reason)) next.add(reason);
+                    }
+                    if (next.isEmpty()) return;
+                    awayReasons.clear();
+                    awayReasons.addAll(next);
+                    if (!awayReasons.contains(awayReason)) awayReason = awayReasons.get(0);
+                    buildAwayChoices();
+                    renderAwayStatus(lastAway);
+                });
+            } catch (Api.Unauthorized e) {
+                ui.post(() -> sessionLost());
+            } catch (IOException ignored) {
+                /* offline: the chips keep whatever they had */
+            }
+        });
+    }
 
     /**
      * Reason chips and length buttons. Choosing a reason only selects it; the
@@ -1870,8 +1904,9 @@ public class MainActivity extends Activity {
     private void buildAwayChoices() {
         if (awayPresets == null || awayDurs == null) return;
         awayPresets.removeAllViews();
-        for (int i = 0; i < AWAY_REASONS.length; i++) {
-            final String reason = AWAY_REASONS[i];
+        if (awayReasons.isEmpty()) awayPresets.addView(label("away reasons load with the connection…"));
+        for (int i = 0; i < awayReasons.size(); i++) {
+            final String reason = awayReasons.get(i);
             boolean on = reason.equals(awayReason);
             Button chip = smallButton(reason.toUpperCase(),
                 on ? R.drawable.bg_btn_go : R.drawable.bg_btn_scene,
@@ -1916,7 +1951,8 @@ public class MainActivity extends Activity {
             awayStatus.setText("last timer is over — the overlay shows nothing now");
             awayStatus.setTextColor(color(R.color.faint));
         } else {
-            awayStatus.setText(awayReason + " selected  ·  pick a length, or UNTIL… for a return time");
+            String what = awayReason.isEmpty() ? "pick a reason" : awayReason + " selected";
+            awayStatus.setText(what + "  ·  pick a length, or UNTIL… for a return time");
             awayStatus.setTextColor(color(R.color.faint));
         }
     }

@@ -227,12 +227,7 @@
   <section class="card">
     <h2>AWAY TIMER</h2>
     <div class="away-status" id="awayStatus">not set</div>
-    <div class="away-presets">
-      <button class="scene" data-away="at work">AT WORK</button>
-      <button class="scene" data-away="outside">OUTSIDE</button>
-      <button class="scene" data-away="sleeping">SLEEPING</button>
-      <button class="scene" data-away="busy">BUSY</button>
-    </div>
+    <div class="away-presets" id="awayPresets"></div>
     <div class="away-durs">
       <button class="btn away-dur" data-min="30">30M</button>
       <button class="btn away-dur" data-min="60">1H</button>
@@ -597,7 +592,32 @@ function render() {
 /* ---------------- away timer ---------------- */
 // One reason plus an end time. The phone sets it; the BRB overlay counts down
 // to it so viewers know when to come back. Nothing shows while it is off.
-let awayReason = "at work";
+let awayReason = "";
+
+// The reasons are the server's list (away.js PRESETS): adding one there is the
+// only edit, and both remotes build their buttons from it on load.
+async function loadAwayPresets() {
+  const r = await api("/api/away");
+  const reasons = Array.isArray(r.presets)
+    ? r.presets.filter((x) => typeof x === "string" && x.trim())
+    : [];
+  if (!reasons.length) return;
+  const box = $("awayPresets");
+  box.textContent = "";
+  for (const reason of reasons) {
+    const b = document.createElement("button");
+    b.className = "scene";
+    b.dataset.away = reason;
+    b.textContent = reason.toUpperCase();
+    b.addEventListener("click", () => {
+      awayReason = reason;
+      paintAwayChoice();
+    });
+    box.appendChild(b);
+  }
+  if (!reasons.includes(awayReason)) awayReason = reasons[0];
+  paintAwayChoice();
+}
 
 function paintAwayChoice() {
   document.querySelectorAll("[data-away]").forEach((b) => {
@@ -642,12 +662,6 @@ async function setAway(body) {
   flash(a.active ? `AWAY: ${a.reason.toUpperCase()}` : "AWAY CLEARED");
 }
 
-document.querySelectorAll("[data-away]").forEach((b) => {
-  b.addEventListener("click", () => {
-    awayReason = b.dataset.away;
-    paintAwayChoice();
-  });
-});
 document.querySelectorAll("[data-min]").forEach((b) => {
   b.addEventListener("click", () => setAway({ reason: awayReason, minutes: Number(b.dataset.min) }));
 });
@@ -895,7 +909,7 @@ function connect() {
   foot.append(" · ", app);
 })();
 
-paintAwayChoice();
+loadAwayPresets();
 api("/api/state").then(() => {
   connect();
   loadScenes();
