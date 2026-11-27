@@ -44,6 +44,22 @@ final class Api {
         return send("POST", path, body == null ? new JSONObject() : body);
     }
 
+    /**
+     * A request whose body is read line by line (the /api/events SSE stream).
+     * The caller owns the connection and has to disconnect it.
+     */
+    HttpURLConnection stream(String path) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
+        c.setRequestMethod("GET");
+        c.setConnectTimeout(8000);
+        c.setReadTimeout(45000);
+        c.setRequestProperty("Accept", "text/event-stream");
+        c.setRequestProperty("Cache-Control", "no-cache");
+        c.setRequestProperty("User-Agent", UA);
+        if (cookie != null) c.setRequestProperty("Cookie", COOKIE + "=" + cookie);
+        return c;
+    }
+
     private JSONObject send(String method, String path, JSONObject body) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
         c.setRequestMethod(method);

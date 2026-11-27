@@ -10,10 +10,25 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
-const { execFile } = require("node:child_process");
+const { execFile, spawn } = require("node:child_process");
 
 const ROOT = __dirname;
 const BASE_MS = 24 * 60 * 60 * 1000;
+
+/* ---------------------------------------------------------------- modpacks */
+
+// Stream Deck keys launch these through Prism's `-w`, which drops straight into
+// the singleplayer world instead of stopping at the title screen.
+const PRISM = "prismlauncher";
+const MODPACKS = {
+  po3: { label: "PO3", instance: "Project Ozone 3 A New Way Forward", world: "2nd time mythicc" },
+  atm9: { label: "ATM9 EXPERT", instance: "All the Mods 9 Expert", world: "New World (1)" },
+  mystic: {
+    label: "MYSTIC 119.1.0",
+    instance: "Mystic's Monstrosity - Greedy Edition 119.1.0",
+    world: "NewYearsStream",
+  },
+};
 
 /* ------------------------------------------------------------------ config */
 
@@ -41,6 +56,10 @@ const CONFIG_DEFAULTS = {
     streamId: "",
     streamName: "",
     subsPollSeconds: 120,   // subscriptions.list is 1 quota unit per call
+    // Live chat (liveChatMessages.list), rebroadcast as SSE "chat" events for
+    // overlays and the Minecraft relay. Uses the OAuth token when there is one,
+    // the API key otherwise.
+    chat: { enabled: true, pollSeconds: 5 },
     // socialcounts.org publishes YouTube's rounded total next to its own live
     // estimate, which moves before the 10-sub rounding step does. Used as a
     // watchdog and as the finer display value.
@@ -118,6 +137,8 @@ const { createTwitch } = require("./twitch");
 const twitch = createTwitch(config.twitch || {}, { obs, log: (m) => console.log(m) });
 const { createBrb } = require("./brb");
 const brb = createBrb((m) => console.log(m));
+const { createAway } = require("./away");
+const away = createAway((m) => console.log(m));
 
 // Some launchers export PORT=0/empty; only trust a usable value, then config.json.
 const PORT = (() => {
@@ -211,6 +232,19 @@ function freshState() {
       // Ultra-low is switched again after the class is read.
       // { enabled, attempts, gaveUp, lastAt, lastClass }
       autoUltra: { enabled: false, attempts: 0, gaveUp: false, lastAt: null, lastClass: null },
+      // What YouTube says is on air: { id, live, status, at }. null until the
+      // first read. This is what catches OBS encoding while YouTube has no
+      // broadcast bound to the stream key — the case that used to look healthy.
+      onAir: null,
+    },
+    chat: {
+      videoId: null,      // the broadcast the liveChatId belongs to
+      liveChatId: null,
+      pageToken: null,    // makes polling lossless: the next call returns what came since
+      lookupAt: 0,        // last attempt to resolve liveChatId for this video
+      lastAt: null,
+      error: null,
+      messages: 0,
     },
     kofi: { lastEvent: null, lastHitAt: null, hits: 0 },
   };
@@ -226,6 +260,7 @@ function loadState() {
       ...s,
       counts: { ...base.counts, ...(s.counts || {}) },
       yt: { ...base.yt, ...(s.yt || {}) },
+      chat: { ...base.chat, ...(s.chat || {}) },
       kofi: { ...base.kofi, ...(s.kofi || {}) },
       log: Array.isArray(s.log) ? s.log : [],
       seenKofi: Array.isArray(s.seenKofi) ? s.seenKofi : [],
@@ -348,8 +383,18 @@ function publicState() {
         handle: config.youtube.handle,
         channelId: state.yt.channelId,
         videoId: state.yt.videoId,
+        // { id, live, status, at } read from YouTube itself, so the dashboard
+        // can say "nothing is on air" while OBS is still streaming.
+        onAir: state.yt.onAir || null,
         subs: state.yt.lastSubs,
         likes: state.yt.lastLikes,
+        chat: {
+          enabled: !!config.youtube.chat?.enabled,
+          liveChatId: state.chat.liveChatId,
+          messages: state.chat.messages || 0,
+          lastAt: state.chat.lastAt,
+          error: state.chat.error,
+        },
         hiddenSubs: !!state.yt.hiddenSubs,
         lastCheck: state.yt.lastCheck,
         error: state.yt.lastError,
@@ -400,6 +445,9 @@ function publicState() {
       },
       twitch: twitch.summary(),
       brb: brb.summary(),
+      // "at work / sleeping / busy until HH:MM" — set from the phone remote,
+      // counted down on the BRB overlay.
+      away: away.summary(),
       obs: {
         enabled: !!config.obs.enabled,
         url: config.obs.url,
@@ -469,6 +517,53 @@ function applyBoost(type, meta = {}) {
   return { ok: true, state: publicState() };
 }
 
+/*
+ * Replay an alert on the OBS notification overlay, for testing the look and
+ * sound. Deliberately touches nothing: no time, no counts, no log entry — the
+ * real /api/boost with test:true is for exercising the accounting, this is for
+ * "does the sub alert look right on stream?".
+ */
+const REPLAY_SAMPLES = {
+  sub: { name: "test_viewer", message: "", amountText: "" },
+  kofi: { name: "test_supporter", message: "for the 24h run!", amountText: "€5" },
+  like: { name: "test_viewer", message: "", amountText: "" },
+};
+
+const REPLAY_TEXT_MAX = 120;
+
+function replayAlert(type, extra = {}) {
+  const b = BOOSTS[type];
+  if (!b) return { ok: false, error: `unknown alert: ${type}` };
+  const base = REPLAY_SAMPLES[type] || { name: "test_viewer", message: "", amountText: "" };
+  // The app can type its own name/message/amount so the card can be checked
+  // with real-looking text; anything not sent keeps the sample wording.
+  const pick = (v, fallback) => {
+    if (typeof v !== "string") return fallback;
+    const t = v.replace(/\s+/g, " ").trim().slice(0, REPLAY_TEXT_MAX);
+    return t || fallback;
+  };
+  const s = {
+    name: pick(extra.name, base.name),
+    message: pick(extra.message, base.message),
+    amountText: pick(extra.amountText, base.amountText),
+  };
+  const alert = {
+    kind: "boost",
+    type,
+    label: b.label,
+    amountMs: b.ms,
+    name: s.name,
+    message: s.message,
+    amountText: s.amountText,
+    source: "replay",
+    test: true,
+    at: Date.now(),
+  };
+  broadcast("message", { ...alert, state: publicState() });
+  console.log(`[alert] replayed ${type} (nothing counted)`);
+  return { ok: true, replayed: type, alert, state: publicState() };
+}
+
 function undoBoost() {
   for (let i = state.log.length - 1; i >= 0; i--) {
     const e = state.log[i];
@@ -528,10 +623,30 @@ async function manualObs(action) {
   if (!obs.authenticated) return { ok: false, error: obs.lastError || "OBS not connected" };
   try {
     if (action === "start") {
-      await obs.startStream();
       obsHoldAt = 0;              // an explicit start always releases the hold
       // A human GO LIVE starts a new chain: the auto-fix may try again.
       if ((state.yt.autoUltra || {}).enabled) saveAutoUltra({ attempts: 0, gaveUp: false });
+
+      // A broadcast has to exist and be bound before OBS pushes: "going live"
+      // by starting the encoder alone is how the stream ended up sending video
+      // to nothing while the dashboard said it was fine.
+      let g = { ok: true };
+      if (ytOAuth.configured() && ytOAuth.hasToken()) {
+        g = await ensureBroadcast().catch((e) => ({ ok: false, error: e.message }));
+      }
+      if (g.creating) {
+        // A switch is creating + binding the broadcast and bounces OBS itself.
+        obsActionError = null;
+        broadcast("state", publicState());
+        return { ok: true, creating: true, state: publicState() };
+      }
+      if (!g.ok) {
+        // No OAuth means no broadcast control; OBS still starts and the on-air
+        // line in the UI shows that nothing is bound.
+        console.warn("[obs] starting without a broadcast:", g.error);
+      }
+      await obs.startStream();
+      if (g.id && (g.status === "created" || g.status === "ready")) nudgeWhenStreaming(g.id, 3);
       noteStreamStart();          // this is a new broadcast → new latency read
     } else {
       await obs.stopStream();
@@ -545,6 +660,88 @@ async function manualObs(action) {
     broadcast("state", publicState());
     return { ok: false, error: e.message, state: publicState() };
   }
+}
+
+/**
+ * Make sure a broadcast exists and is bound to the stream key before OBS is
+ * told to push.
+ *
+ * This is the failure the timer kept hitting: the encoder sent video to the
+ * stream key while YouTube had no broadcast bound to it, so the channel showed
+ * no live video and nothing was recorded. Going live is now: reuse the
+ * broadcast this app created (already on air, or created/ready and waiting for
+ * the encoder), bind it again if the bind was lost, and only create a new one
+ * when the Live API genuinely has nothing. No search call anywhere in here.
+ */
+let ensuring = null;
+
+async function ensureBroadcast() {
+  if (!ytOAuth.hasToken()) {
+    return { ok: false, error: "youtube is not authorized — open /oauth/start" };
+  }
+  if (ensuring) return ensuring;
+
+  ensuring = (async () => {
+    const b = await ytLive.resolveBroadcast();
+    const st = String((b && b.status && b.status.lifeCycleStatus) || "");
+
+    if (b && b.id) {
+      adoptVideo(b.id);
+      const streamId = await ytLive.streamId().catch(() => null);
+      let bound = !!(b.contentDetails && b.contentDetails.boundStreamId);
+      if (!bound && streamId) {
+        // A created broadcast with no stream bound never goes live, however
+        // healthy the encoder looks. Bind it to the key OBS already uses.
+        await ytLive.bind(b.id, streamId);
+        bound = true;
+        console.log(`[yt-live] bound ${b.id} to stream ${streamId}`);
+      }
+      noteOnAir(b.id, st === "live" || st === "liveStarting", st || "unknown");
+      save();
+      broadcast("state", publicState());
+      if (st === "created" || st === "ready") nudgeWhenStreaming(b.id);
+      return { ok: true, id: b.id, reused: true, bound, status: st };
+    }
+
+    // Nothing usable: create this run's broadcast, bind it, and let the switch
+    // own OBS from here (it stops and restarts the encoder against the new
+    // broadcast).
+    const r = startSwitch("ultraLow");
+    if (!r.ok) return r;
+    return { ok: true, creating: true, id: null, reused: false };
+  })().finally(() => {
+    ensuring = null;
+  });
+
+  return ensuring;
+}
+
+/**
+ * enableAutoStart fires when the ingest session becomes active. A broadcast
+ * bound after OBS was already pushing never gets that event, so the transition
+ * is nudged a few times in the background — the same fix waitForLive uses.
+ */
+function nudgeWhenStreaming(id, tries = 6) {
+  (async () => {
+    for (let i = 0; i < tries; i++) {
+      await pause(5000);
+      try {
+        if (!obs.streaming) return;
+        if ((await ytLive.streamStatus()) !== "active") continue;
+        await ytLive.goLive(id);
+        const b = await ytLive.broadcast(id);
+        const s = b && b.status ? b.status.lifeCycleStatus : null;
+        console.log(`[yt-live] nudge ${id} → ${s || "?"}`);
+        if (s === "live" || s === "liveStarting") {
+          noteOnAir(id, true, "live");
+          broadcast("state", publicState());
+          return;
+        }
+      } catch (e) {
+        console.log(`[yt-live] nudge ${id}: ${e.message}`);
+      }
+    }
+  })();
 }
 
 /**
@@ -563,7 +760,18 @@ async function streamTick() {
   try {
     if (started && rem > 0 && !obs.streaming && !obsHoldActive() && config.obs.autoStart) {
       lastObsAttempt = Date.now();
+      // The scheduled start follows the same rule as GO LIVE: bind a broadcast
+      // first, or the encoder pushes into nothing.
+      const g = ytOAuth.hasToken()
+        ? await ensureBroadcast().catch((e) => ({ ok: false, error: e.message }))
+        : { ok: false, error: "youtube is not authorized" };
+      if (g.creating) {
+        obsActionError = null;
+        broadcast("state", publicState());
+        return;
+      }
       await obs.startStream();
+      if (g.id && (g.status === "created" || g.status === "ready")) nudgeWhenStreaming(g.id, 3);
       obsActionError = null;
       noteStreamStart();
       broadcast("state", publicState());
@@ -843,7 +1051,12 @@ async function findLiveVideo(channelId) {
     state.yt.lookupsToday = 0;
   }
   if (state.yt.lookupsToday >= 60) {
-    throw new Error("auto-detect paused for today (search quota); paste the video id in config.json");
+    // The search bucket is spent for today. This is no longer a failure: the
+    // Live API path (resolveLiveVideo) covers every broadcast this app creates,
+    // so the timer keeps following the stream with no search at all. Search is
+    // only ever the last resort for a stream started somewhere else.
+    console.warn("[yt] search auto-detect paused for today (quota) — Live API only");
+    return null;
   }
   if (Date.now() < (state.yt.nextVideoLookup || 0)) return null;
   state.yt.nextVideoLookup = Date.now() + 60000;
@@ -1003,6 +1216,56 @@ async function pollYouTubePage(reason = "interval") {
   }
 }
 
+/**
+ * Remembers which video the timer is following.
+ *
+ * The broadcast id the app creates lives here and in state.json, so a restart,
+ * a failed search or an exhausted search quota cannot lose it. No search call
+ * is involved in following it.
+ */
+function adoptVideo(id) {
+  if (!id || state.yt.videoId === id) return id;
+  state.yt.videoId = id;
+  state.yt.lastLikes = null;   // new video → new like baseline
+  state.yt.likePeak = null;
+  save();
+  console.log(`[yt] following broadcast ${id}`);
+  return id;
+}
+
+/** Records what YouTube says is on air; the dashboard renders it verbatim. */
+function noteOnAir(id, live, status) {
+  state.yt.onAir = {
+    id: id || null,
+    live: !!live,
+    status: status || (live ? "live" : "none"),
+    at: Date.now(),
+  };
+}
+
+/**
+ * The video id, without leaning on search.
+ *
+ * The Live API lists the broadcast this app made (one cheap call, none of the
+ * search bucket) and state keeps its id across restarts, so that is always
+ * asked first. search.list stays only for a stream this app did not start; when
+ * its 100-a-day bucket is spent the poll carries on instead of going red.
+ */
+async function resolveLiveVideo(channelId) {
+  let b = null;
+  try {
+    b = await ytLive.resolveBroadcast();
+  } catch (e) {
+    console.warn("[yt] live api broadcast lookup failed:", e.message);
+  }
+  if (b && b.id) {
+    adoptVideo(b.id);
+    return b.id;
+  }
+  if (!config.youtube.autoDetectLive) return null;
+  return findLiveVideo(channelId);
+}
+
 async function pollYouTube(reason = "timer") {
   const yt = config.youtube;
   if (!yt.apiKey) return { ok: false, skipped: "youtube not configured" };
@@ -1034,10 +1297,18 @@ async function pollYouTube(reason = "timer") {
 
     // 2. likes on the live video
     let videoId = yt.videoId || state.yt.videoId;
-    if (!videoId && yt.autoDetectLive) videoId = await findLiveVideo(channelId);
+    if (!videoId && yt.autoDetectLive) {
+      try {
+        videoId = await resolveLiveVideo(channelId);
+      } catch (e) {
+        // Subscribers are already credited above: a missing live video must not
+        // turn the whole poll red, and the on-air line below still reports it.
+        console.warn("[yt] no live video to follow:", e.message);
+      }
+    }
     if (videoId) {
       const v = await ytGet(
-        `videos?part=statistics,liveStreamingDetails&id=${encodeURIComponent(videoId)}`
+        `videos?part=snippet,statistics,liveStreamingDetails&id=${encodeURIComponent(videoId)}`
       );
       const item = v.items && v.items[0];
       if (item) {
@@ -1064,19 +1335,31 @@ async function pollYouTube(reason = "timer") {
             }
           }
         }
+        // "live" comes from YouTube itself, so a broadcast that is only
+        // scheduled, or bound but waiting for the encoder, is never mistaken
+        // for a running stream.
+        const airNow = item.snippet ? item.snippet.liveBroadcastContent : null;
+        noteOnAir(videoId, airNow === "live", airNow || "unknown");
+
         const lsd = item.liveStreamingDetails;
         if (lsd && lsd.actualEndTime) {
           console.log("[yt] stream ended — clearing video id");
           state.yt.videoId = null;
           state.yt.lastLikes = null;
           state.yt.likePeak = null;
+          noteOnAir(videoId, false, "none");
         }
       } else if (state.yt.videoId) {
         console.warn("[yt] video not found — clearing cached id");
         state.yt.videoId = null;
         state.yt.lastLikes = null;
         state.yt.likePeak = null;
+        noteOnAir(null, false, "none");
       }
+    } else {
+      // Nothing to follow and nothing found. This is exactly the state where
+      // OBS pushes video while youtube.com shows no live broadcast at all.
+      noteOnAir(null, false, "none");
     }
 
     state.yt.lastError = null;
@@ -1094,6 +1377,104 @@ async function pollYouTube(reason = "timer") {
     return { ok: false, error: e.message };
   } finally {
     ytPolling = false;
+  }
+}
+
+/* --------------------------------------------------------------- live chat */
+
+let chatPolling = false; // a slow chat poll must never overlap the next one
+
+/**
+ * Reads liveChatMessages.list and rebroadcasts every message as a "chat" SSE
+ * event ({ kind, author, text, owner, member, at }). The page token makes this
+ * lossless: the next call returns everything posted since the last one, so a
+ * slow poll only adds latency instead of dropping messages.
+ */
+async function pollLiveChat(reason = "interval") {
+  if (!config.youtube.chat?.enabled) return { ok: false, skipped: "chat disabled" };
+  if (chatPolling) return { ok: false, skipped: "a chat poll is already running" };
+
+  const videoId = state.yt.videoId;
+  if (!videoId) {
+    state.chat.videoId = null;
+    state.chat.liveChatId = null;
+    state.chat.pageToken = null;
+    return { ok: false, skipped: "not live" };
+  }
+
+  chatPolling = true;
+
+  try {
+    const now = Date.now();
+    const stale = state.chat.videoId !== videoId || !state.chat.liveChatId;
+    // One lookup per video, retried at most once a minute while the chat does
+    // not exist yet (the chat id only shows up once the broadcast is live).
+    if (stale && (state.chat.videoId !== videoId || now - (state.chat.lookupAt || 0) > 60000)) {
+      const v = await ytGet(`videos?part=liveStreamingDetails&id=${encodeURIComponent(videoId)}`);
+      const lsd = v.items?.[0]?.liveStreamingDetails;
+      state.chat.videoId = videoId;
+      state.chat.liveChatId = lsd?.activeLiveChatId || null;
+      state.chat.pageToken = null;
+      state.chat.lookupAt = now;
+      state.chat.messages = 0;
+      if (!state.chat.liveChatId) {
+        state.chat.error = "no active live chat on this video";
+        return { ok: false, error: state.chat.error };
+      }
+    }
+
+    if (!state.chat.liveChatId) {
+      return { ok: false, skipped: "no active live chat" };
+    }
+
+    const token = ytOAuth.hasToken() ? await ytOAuth.getAccessToken() : null;
+    let url =
+      `${YT}liveChatMessages?liveChatId=${encodeURIComponent(state.chat.liveChatId)}` +
+      `&part=snippet,authorDetails&maxResults=200&hl=en`;
+    if (state.chat.pageToken) url += `&pageToken=${encodeURIComponent(state.chat.pageToken)}`;
+    if (!token) url += `&key=${config.youtube.apiKey}`;
+
+    const r = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error?.message || `liveChatMessages returned ${r.status}`);
+
+    let sent = 0;
+    for (const item of data.items || []) {
+      const snippet = item.snippet || {};
+      // Deleted/removed messages and the non-message live chat events carry no text.
+      const text = String(snippet.displayMessage || "").replace(/\s+/g, " ").trim();
+      if (!text) continue;
+      broadcast("chat", {
+        kind: "chat",
+        author: item.authorDetails?.displayName || "viewer",
+        text: text.slice(0, 300),
+        owner: !!item.authorDetails?.isChatOwner,
+        member: !!item.authorDetails?.isChatSponsor,
+        at: Date.now(),
+      });
+      sent++;
+    }
+
+    state.chat.pageToken = data.nextPageToken || state.chat.pageToken;
+    state.chat.lastAt = Date.now();
+    state.chat.messages = (state.chat.messages || 0) + sent;
+    state.chat.error = null;
+    return { ok: true, messages: sent };
+  } catch (e) {
+    state.chat.error = e.message;
+    // A closed chat (stream ended) must be looked up again, a transient error only retried.
+    if (/ended|closed|forbidden|not found/i.test(e.message)) {
+      state.chat.liveChatId = null;
+      state.chat.lookupAt = 0;
+    }
+    state.chat.pageToken = null;
+    console.warn(`[yt-chat] poll failed (${reason}):`, e.message);
+    return { ok: false, error: e.message };
+  } finally {
+    chatPolling = false;
   }
 }
 
@@ -1964,6 +2345,18 @@ async function setYtpmvAudio(body) {
   return ytpmvAudioState();
 }
 
+/** True while a Prism-launched client is already on screen: one game at a time. */
+function minecraftRunning() {
+  return new Promise((resolve) => {
+    execFile(
+      "pgrep",
+      ["-f", "org.prismlauncher.EntryPoint"],
+      { timeout: 1500 },
+      (err, stdout) => resolve(!err && String(stdout).trim().length > 0)
+    );
+  });
+}
+
 function json(res, body, status = 200) {
   const data = JSON.stringify(body);
   res.writeHead(status, {
@@ -2318,8 +2711,19 @@ async function sceneSources(sceneName) {
     "";
   if (!scene) throw new Error("scene required");
   const d = await obs.request("GetSceneItemList", { sceneName: scene });
+  const all = d.sceneItems || [];
   const items = [];
-  for (const it of d.sceneItems || []) {
+  // The phone shows "y 512 / 1080" while nudging a source up and down.
+  let canvasW = 1920;
+  let canvasH = 1080;
+  try {
+    const v = await obs.request("GetVideoSettings");
+    canvasW = Number(v.baseWidth) || canvasW;
+    canvasH = Number(v.baseHeight) || canvasH;
+  } catch {
+    /* default canvas size is good enough for the readout */
+  }
+  for (const it of all) {
     const kind = String(it.inputKind || "");
     let text = "";
     let file = "";
@@ -2340,9 +2744,28 @@ async function sceneSources(sceneName) {
     const picture = kind === "browser_source" && /\/media\/[^/]+\.html$/i.test(url);
     const animated = /\.(gif|webp)\.html$/i.test(url);
     const type = isTextKind(kind) ? "text" : picture ? (animated ? "gif" : "image") : kind === "image_source" ? "image" : "other";
-    items.push({ id: it.sceneItemId, name: it.sourceName, type, inputKind: kind, text, file, url });
+    items.push({
+      id: it.sceneItemId,
+      name: it.sourceName,
+      type,
+      inputKind: kind,
+      text,
+      file,
+      url,
+      // Visibility, so the phone can show/hide this source.
+      enabled: it.sceneItemEnabled !== false,
+      // Layer order: OBS numbers scene items from the back (0) to the front,
+      // so the phone can draw the list front-first and move rows around.
+      index: Number(it.sceneItemIndex) || 0,
+      count: all.length,
+      // Where the source sits on the canvas, for the position nudge.
+      x: Number((it.sceneItemTransform || {}).positionX) || 0,
+      y: Number((it.sceneItemTransform || {}).positionY) || 0,
+      width: Number((it.sceneItemTransform || {}).width) || 0,
+      height: Number((it.sceneItemTransform || {}).height) || 0,
+    });
   }
-  return { scene, items };
+  return { scene, items, canvas: { width: canvasW, height: canvasH } };
 }
 
 /* ------------------------------------------------------------ audio mixer */
@@ -2389,6 +2812,110 @@ function serveMedia(pathname, res) {
     });
     res.end(data);
   });
+}
+
+/* ------------------------------------------------------- phone camera relay */
+// The phone camera app uploads one MPEG-TS stream (POST /api/cam/upload, using
+// the remote token) and OBS pulls it back from this machine (GET /cam.ts). The
+// phone's only connection is its own outbound one, so this works on mobile data
+// from anywhere — no LAN address, no port forwarding, nothing to configure in
+// OBS after the first time.
+const CAM = {
+  at: 0, // last chunk time; 0 when the phone is not uploading
+  bytes: 0,
+  clients: new Set(), // the responses OBS and the dashboard read from
+  buffer: [], // recent TS, replayed on connect so a player starts instantly
+  bufferBytes: 0,
+};
+const CAM_BUFFER_BYTES = 4 * 1024 * 1024;
+// A batch arrives every ~300 ms; a gap this long means the phone stopped.
+const CAM_STALE_MS = 3500;
+
+function camStatus() {
+  return {
+    live: CAM.at > 0 && Date.now() - CAM.at < CAM_STALE_MS,
+    bytes: CAM.bytes,
+    viewers: CAM.clients.size,
+    bufferedBytes: CAM.bufferBytes,
+  };
+}
+
+function camBroadcast(chunk) {
+  CAM.buffer.push(chunk);
+  CAM.bufferBytes += chunk.length;
+  while (CAM.bufferBytes > CAM_BUFFER_BYTES && CAM.buffer.length > 1) {
+    CAM.bufferBytes -= CAM.buffer.shift().length;
+  }
+  for (const c of CAM.clients) {
+    try {
+      c.write(chunk);
+    } catch {
+      CAM.clients.delete(c);
+    }
+  }
+}
+
+function camUpload(req, res) {
+  // The phone sends the stream as short batches (a tunnel will not pass one
+  // endless request body), so this route is called a few times a second and the
+  // bytes are simply appended. A pause longer than CAM_STALE_MS starts a new
+  // broadcast instead of splicing the old one in.
+  const fresh = CAM.at === 0 || Date.now() - CAM.at > CAM_STALE_MS;
+  if (fresh) {
+    CAM.buffer = [];
+    CAM.bufferBytes = 0;
+    CAM.bytes = 0;
+    console.log("[cam] phone camera upload started");
+  }
+  CAM.at = Date.now();
+
+  req.on("data", (chunk) => {
+    CAM.at = Date.now();
+    CAM.bytes += chunk.length;
+    camBroadcast(chunk);
+  });
+  req.on("error", () => {
+    CAM.at = 0;
+  });
+  req.on("end", () => {
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(camStatus()));
+  });
+}
+
+/**
+ * Where the replay may start inside the oldest buffered chunk. Chunks are the
+ * fragments Node hands over from a POST body, so the ring buffer can lose its
+ * head a few bytes into a 188-byte TS packet; a player then complains about a
+ * missing PPS until the next keyframe. Slide forward to a real sync byte that
+ * repeats on the packet grid.
+ */
+function camReplayOffset(chunks) {
+  const WINDOW = 188 * 3;
+  const head = chunks[0];
+  if (!head || head.length < WINDOW) return 0;
+  for (let o = 0; o < 188; o++) {
+    if (head[o] === 0x47 && head[o + 188] === 0x47 && head[o + 376] === 0x47) return o;
+  }
+  return 0;
+}
+
+function camWatch(req, res) {
+  res.writeHead(200, {
+    "Content-Type": "video/mp2t",
+    "Cache-Control": "no-store",
+    Connection: "close",
+    "Access-Control-Allow-Origin": "*",
+  });
+  if (CAM.buffer.length > 0) {
+    const skip = camReplayOffset(CAM.buffer);
+    res.write(skip > 0 ? CAM.buffer[0].subarray(skip) : CAM.buffer[0]);
+    for (let i = 1; i < CAM.buffer.length; i++) res.write(CAM.buffer[i]);
+  }
+  CAM.clients.add(res);
+  const drop = () => CAM.clients.delete(res);
+  req.on("close", drop);
+  res.on("error", drop);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -2479,12 +3006,30 @@ const server = http.createServer(async (req, res) => {
 
     if (p === "/api/state" && req.method === "GET") return json(res, publicState());
 
+    if (p === "/api/cam/status" && req.method === "GET") return json(res, camStatus());
+    if (p === "/api/cam/upload" && req.method === "POST") return camUpload(req, res);
+
+    // The camera picture for OBS: "Media Source" with this local address.
+    if (p === "/cam.ts" && req.method === "GET") return camWatch(req, res);
+
     if (p === "/api/events") return sse(req, res);
 
     if (req.method === "POST" && p === "/api/boost") {
       const body = await readJson(req);
       if (!BOOSTS[body.type]) return json(res, { ok: false, error: "unknown boost" }, 400);
       return json(res, applyBoost(body.type, { source: body.source || "manual", test: !!body.test }));
+    }
+
+    // Fire one of the three alerts on the notifications overlay without
+    // counting anything, so the alerts can be checked on stream safely.
+    if (req.method === "POST" && p === "/api/replay") {
+      const body = await readJson(req);
+      const r = replayAlert(String(body.type || ""), {
+        name: body.name,
+        message: body.message,
+        amountText: body.amountText,
+      });
+      return json(res, r, r.ok ? 200 : 400);
     }
 
     if (req.method === "POST" && p === "/api/undo") return json(res, undoBoost());
@@ -2677,6 +3222,19 @@ const server = http.createServer(async (req, res) => {
       return json(res, { ...r, state: publicState() }, r.ok ? 200 : 400);
     }
 
+    // Away timer: "at work / sleeping / busy, back at HH:MM". `until` is an
+    // absolute end time from the phone's time picker, `minutes` a countdown.
+    if (p === "/api/away" && req.method === "GET") return json(res, { ok: true, ...away.data() });
+    if (req.method === "POST" && p === "/api/away") {
+      const body = await readJson(req);
+      const r =
+        String(body.action || "set") === "clear"
+          ? away.clear()
+          : away.set(body.reason, body.minutes, body.until);
+      if (r.ok) broadcast("state", publicState());
+      return json(res, { ...r, state: publicState() }, r.ok ? 200 : 400);
+    }
+
     // Twitch queue for the asleep scene (relay on 127.0.0.1:8099).
     if (p === "/api/twitch" && req.method === "GET") {
       return json(res, await twitch.status());
@@ -2719,6 +3277,132 @@ const server = http.createServer(async (req, res) => {
         return json(res, { ok: false, error: e.message });
       }
     }
+    // Show/hide one source inside a scene (the ON/OFF switches in the app).
+    if (p === "/api/obs/source/visible" && req.method === "POST") {
+      const body = await readJson(req);
+      const scene = String(body.scene || "").trim();
+      const sceneItemId = Number(body.sceneItemId);
+      const visible = body.visible !== false;
+      if (!scene || !Number.isFinite(sceneItemId)) {
+        return json(res, { ok: false, error: "scene and sceneItemId required" }, 400);
+      }
+      if (!obs.authenticated) return json(res, { ok: false, error: "OBS not connected" });
+      try {
+        await obs.request("SetSceneItemEnabled", {
+          sceneName: scene,
+          sceneItemId,
+          sceneItemEnabled: visible,
+        });
+        console.log(`[obs] "${scene}" item ${sceneItemId} → ${visible ? "visible" : "hidden"}`);
+        return json(res, { ok: true, scene, sceneItemId, visible });
+      } catch (e) {
+        return json(res, { ok: false, error: e.message });
+      }
+    }
+
+    // Layer order inside a scene: the phone's ▲/▼ arrows. OBS counts scene
+    // items from the back (index 0) to the front, so "top" is the last index.
+    // `delta` steps one place, `to:"top"|"bottom"` jumps all the way.
+    if (p === "/api/obs/source/order" && req.method === "POST") {
+      const body = await readJson(req);
+      const scene = String(body.scene || "").trim();
+      const sceneItemId = Number(body.sceneItemId);
+      if (!scene || !Number.isFinite(sceneItemId)) {
+        return json(res, { ok: false, error: "scene and sceneItemId required" }, 400);
+      }
+      if (!obs.authenticated) return json(res, { ok: false, error: "OBS not connected" });
+      try {
+        const list = await obs.request("GetSceneItemList", { sceneName: scene });
+        const items = list.sceneItems || [];
+        const item = items.find((i) => Number(i.sceneItemId) === sceneItemId);
+        if (!item) return json(res, { ok: false, error: "source is not in this scene" }, 404);
+        const count = items.length;
+        const current = Number(item.sceneItemIndex) || 0;
+        let target;
+        if (body.to === "top") target = count - 1;
+        else if (body.to === "bottom") target = 0;
+        else if (Number.isFinite(Number(body.index))) target = Math.round(Number(body.index));
+        else target = current + Math.round(Number(body.delta) || 0);
+        target = Math.max(0, Math.min(count - 1, target));
+        if (target !== current) {
+          await obs.request("SetSceneItemIndex", {
+            sceneName: scene,
+            sceneItemId,
+            sceneItemIndex: target,
+          });
+          console.log(`[obs] "${scene}" ${item.sourceName}: layer ${current} → ${target} of ${count}`);
+        }
+        return json(res, { ok: true, scene, sceneItemId, index: target, count });
+      } catch (e) {
+        return json(res, { ok: false, error: e.message });
+      }
+    }
+
+    // Where a source sits on the picture: the phone's position nudge. OBS
+    // measures positionY from the source's alignment anchor (top edge, centre
+    // or bottom edge), so top/middle/bottom of the canvas are computed from
+    // that anchor plus the source's own height. `steps` nudges by 5% of the
+    // canvas per press, `deltaY` moves by exact pixels.
+    if (p === "/api/obs/source/position" && req.method === "POST") {
+      const body = await readJson(req);
+      const scene = String(body.scene || "").trim();
+      const sceneItemId = Number(body.sceneItemId);
+      if (!scene || !Number.isFinite(sceneItemId)) {
+        return json(res, { ok: false, error: "scene and sceneItemId required" }, 400);
+      }
+      if (!obs.authenticated) return json(res, { ok: false, error: "OBS not connected" });
+      try {
+        const list = await obs.request("GetSceneItemList", { sceneName: scene });
+        const item = (list.sceneItems || []).find((i) => Number(i.sceneItemId) === sceneItemId);
+        if (!item) return json(res, { ok: false, error: "source is not in this scene" }, 404);
+        let canvasH = 1080;
+        try {
+          const v = await obs.request("GetVideoSettings");
+          canvasH = Number(v.baseHeight) || canvasH;
+        } catch {
+          /* fall back to 1080p */
+        }
+        const t = item.sceneItemTransform || {};
+        const align = Number(t.alignment) || 0;
+        // With bounds on, the box OBS draws is the bounds box, not the raw
+        // source size (a 1920x1080 "fit to screen" source reports height 240).
+        const bounds = String(t.boundsType || "OBS_BOUNDS_NONE") !== "OBS_BOUNDS_NONE";
+        const h = bounds && Number(t.boundsHeight) > 0
+          ? Number(t.boundsHeight)
+          : Number(t.height) || Number(t.sourceHeight) || 0;
+        // Distance from the source's top edge down to its alignment anchor.
+        const anchor = align & 4 ? 0 : align & 8 ? h : h / 2;
+        const step = Math.max(1, Math.round(Number(body.step) || canvasH * 0.05));
+        let y = Number(t.positionY) || 0;
+        if (body.to === "top") y = anchor;
+        else if (body.to === "bottom") y = canvasH - h + anchor;
+        else if (body.to === "middle") y = (canvasH - h) / 2 + anchor;
+        else if (Number.isFinite(Number(body.deltaY))) y += Number(body.deltaY);
+        else y += (Number(body.steps) || 0) * step;
+        y = Math.round(y);
+        await obs.request("SetSceneItemTransform", {
+          sceneName: scene,
+          sceneItemId,
+          sceneItemTransform: {
+            positionX: Number(t.positionX) || 0,
+            positionY: y,
+          },
+        });
+        console.log(`[obs] "${scene}" ${item.sourceName}: y ${Math.round(Number(t.positionY) || 0)} → ${y} of ${canvasH}`);
+        return json(res, {
+          ok: true,
+          scene,
+          sceneItemId,
+          x: Number(t.positionX) || 0,
+          y,
+          canvasH,
+          step,
+        });
+      } catch (e) {
+        return json(res, { ok: false, error: e.message });
+      }
+    }
+
     // Text and pictures inside one scene (edited from the phone app).
     if (p === "/api/obs/sources" && req.method === "GET") {
       if (!obs.authenticated) return json(res, { ok: false, error: "OBS not connected" });
@@ -2909,6 +3593,33 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // Modpack launcher behind the Stream Deck's Modpacks page.
+    if (p === "/api/modpacks" && req.method === "GET") {
+      return json(res, {
+        ok: true,
+        modpacks: Object.entries(MODPACKS).map(([key, pack]) => ({ key, ...pack })),
+      });
+    }
+    if (p === "/api/modpack/launch" && req.method === "POST") {
+      const body = await readJson(req);
+      const pack = MODPACKS[body.key];
+      if (!pack) return json(res, { ok: false, error: "unknown modpack" }, 400);
+      if (await minecraftRunning()) {
+        return json(res, { ok: false, error: "a Minecraft instance is already running" }, 409);
+      }
+      const args = ["-l", pack.instance];
+      if (pack.world) args.push("-w", pack.world);
+      try {
+        const child = spawn(PRISM, args, { detached: true, stdio: "ignore" });
+        child.on("error", (e) => console.log(`[modpack] spawn failed: ${e.message}`));
+        child.unref();
+      } catch (e) {
+        return json(res, { ok: false, error: e.message });
+      }
+      console.log(`[modpack] ${pack.label} -> ${pack.world || "title screen"}`);
+      return json(res, { ok: true, instance: pack.instance, world: pack.world || "" });
+    }
+
     if (p === "/api/health") {
       return json(res, {
         ok: true,
@@ -2940,6 +3651,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// The camera upload is one request that lasts as long as the stream; without
+// this Node closes it after five minutes.
+server.requestTimeout = 0;
 server.listen(PORT, HOST, () => {
   try {
     fs.writeFileSync(path.join(ROOT, "server.pid"), String(process.pid));
@@ -3000,4 +3714,7 @@ setTimeout(() => pollYouTubePage("startup").catch(() => {}), 5000);
 pollVlc();
 setInterval(pollVlc, 1000);
 setTimeout(() => pollYouTube("startup"), 2500);
+setInterval(() => {
+  pollLiveChat("interval").catch((e) => console.warn("[yt-chat]", e.message));
+}, Math.max(3, config.youtube.chat?.pollSeconds || 5) * 1000);
 setInterval(() => broadcast("state", publicState()), 15000); // slow heartbeat for late tabs

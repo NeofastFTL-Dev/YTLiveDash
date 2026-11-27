@@ -23,6 +23,16 @@
   }
   #line span.space { width: .34em; }
 
+  /* The away timer under the line: "at work · back 18:30 · 2h 14m left". */
+  #sub {
+    position: absolute; left: 0; right: 0; top: calc(50% + 76px);
+    text-align: center; white-space: nowrap;
+    font-family: "Nunito", "Segoe UI", system-ui, "DejaVu Sans", sans-serif;
+    font-weight: 800; font-size: 40px; letter-spacing: 2px; color: #fff;
+    text-shadow: 0 0 2px rgba(0,0,0,.95), 0 3px 0 rgba(0,0,0,.5), 0 0 22px rgba(0,0,0,.45);
+  }
+  #sub[hidden] { display: none; }
+
   /* ---------------------------------------------------------------- presets */
 
   /* rainbow wiggle: per-letter colour, each letter bobs on its own delay */
@@ -101,6 +111,7 @@
 </head>
 <body>
 <div id="line" aria-label="im at work brb later!"></div>
+<div id="sub" hidden></div>
 <script>
   /* The texts and their animation preset come from the timer (/api/brb), which
      the phone app edits. Several texts cycle one at a time. */
@@ -157,8 +168,49 @@
     }
   }
 
+  /* The away timer set from the phone: how long until the stream is back.
+     Ticked locally from the end time so the countdown moves every second,
+     and hidden the moment it runs out. */
+  const sub = document.getElementById("sub");
+  let awayUntil = 0;
+  let awayReason = "";
+
+  function awayText() {
+    if (!awayUntil) return "";
+    const left = awayUntil - Date.now();
+    if (left <= 0) return "";
+    const end = new Date(awayUntil);
+    const hh = String(end.getHours()).padStart(2, "0");
+    const mm = String(end.getMinutes()).padStart(2, "0");
+    const h = Math.floor(left / 3600000);
+    const m = Math.ceil((left % 3600000) / 60000);
+    const dur = h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+    return `${awayReason} · back ${hh}:${mm} · ${dur} left`;
+  }
+
+  function tickAway() {
+    const text = awayText();
+    sub.hidden = !text;
+    if (text) sub.textContent = text;
+  }
+
+  async function loadAway() {
+    try {
+      const res = await fetch("/api/away", { cache: "no-store" });
+      const j = await res.json();
+      awayUntil = j && j.active ? Number(j.until) || 0 : 0;
+      awayReason = (j && j.reason) || "";
+    } catch (e) {
+      return;
+    }
+    tickAway();
+  }
+
   load(true);
   setInterval(() => load(false), 15000);
+  loadAway();
+  setInterval(tickAway, 1000);
+  setInterval(loadAway, 10000);
 </script>
 </body>
 </html>

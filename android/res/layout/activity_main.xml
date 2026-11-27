@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pageScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg"
@@ -436,6 +437,128 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:fontFamily="monospace"
+                    android:letterSpacing="0.14"
+                    android:text="REPLAY ALERT · SHOWS IN APP + OBS"
+                    android:textColor="@color/faint"
+                    android:textSize="9sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/replaySub"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.06"
+                        android:text="SUB ALERT"
+                        android:textColor="#FF6B85"
+                        android:textSize="10sp" />
+
+                    <Button
+                        android:id="@+id/replayKofi"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.06"
+                        android:text="DONO ALERT"
+                        android:textColor="#5CC8F2"
+                        android:textSize="10sp" />
+
+                    <Button
+                        android:id="@+id/replayLike"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginLeft="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:letterSpacing="0.06"
+                        android:text="LIKE ALERT"
+                        android:textColor="#FFA76B"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <!-- What the alert card will say. Empty = the server's sample text. -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <EditText
+                        android:id="@+id/alertName"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:hint="name (test_viewer)"
+                        android:inputType="text"
+                        android:maxLength="40"
+                        android:paddingLeft="12dp"
+                        android:paddingRight="12dp"
+                        android:singleLine="true"
+                        android:textColor="@color/txt"
+                        android:textColorHint="@color/faint"
+                        android:textSize="11sp" />
+
+                    <EditText
+                        android:id="@+id/alertAmount"
+                        android:layout_width="96dp"
+                        android:layout_height="44dp"
+                        android:layout_marginLeft="8dp"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:hint="€5"
+                        android:inputType="text"
+                        android:maxLength="12"
+                        android:paddingLeft="12dp"
+                        android:paddingRight="12dp"
+                        android:singleLine="true"
+                        android:textColor="@color/txt"
+                        android:textColorHint="@color/faint"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <EditText
+                    android:id="@+id/alertMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_btn"
+                    android:fontFamily="monospace"
+                    android:hint="message (for the 24h run!)"
+                    android:inputType="text"
+                    android:maxLength="120"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
+                    android:singleLine="true"
+                    android:textColor="@color/txt"
+                    android:textColorHint="@color/faint"
+                    android:textSize="11sp" />
+
+                <!-- The alert card itself, exactly as the OBS overlay draws it. -->
+                <LinearLayout
+                    android:id="@+id/alertPreview"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical" />
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -558,7 +681,12 @@
                 android:orientation="vertical"
                 android:padding="12dp">
 
-                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ACTIVITY" />
+                <TextView
+                    android:id="@+id/feedLabel"
+                    style="@style/Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ACTIVITY" />
 
                 <LinearLayout
                     android:id="@+id/feed"
@@ -1337,6 +1465,33 @@
                     android:layout_marginTop="8dp"
                     android:fontFamily="monospace"
                     android:text="tap a scene · ▶ is the one on air · editing here never switches the program"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SOURCES · SHOW OR HIDE" />
+
+                <LinearLayout
+                    android:id="@+id/sceneToggleList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="top of the list = in front · ▲▼ = layer order · tap a name to move it up/down on the picture · ON/OFF shows or hides · live, no scene switch"
                     android:textColor="@color/faint"
                     android:textSize="9.5sp" />
             </LinearLayout>

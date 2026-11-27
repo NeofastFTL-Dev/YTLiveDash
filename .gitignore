@@ -6,6 +6,8 @@ config.json
 yt-token.json
 android/.ks-pass
 android/emilli-release.keystore
+camera-app/.ks-pass
+camera-app/emilli-cam.keystore
 
 # ------------------------------------------------------------- private data
 state.json
@@ -16,8 +18,13 @@ journal*.json
 # The APK is a release artifact, and this copy carries the access token.
 emilli-remote.apk
 emilli-remote.apk.idsig
+emilli-cam.apk
+emilli-cam.apk.idsig
 android/build/
+camera-app/build/
 android/res/values/defaults.xml
+# The camera app's baked-in relay address + token, same rule as the remote's.
+camera-app/res/values/defaults.xml
 node_modules/
 deck/node_modules/
 

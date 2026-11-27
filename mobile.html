@@ -74,6 +74,23 @@
   .t-sub { font-size: 11px; color: var(--dim); line-height: 1.5; }
   .t-sub b { color: var(--txt); font-weight: 600; }
 
+  /* ---------- away timer ---------- */
+  .away-status { font-size: 11.5px; line-height: 1.5; color: var(--dim); margin-bottom: 9px; }
+  .away-status.on { color: #ffd9c8; }
+  .away-status b { color: var(--txt); font-weight: 600; }
+  .away-presets { display: flex; gap: 8px; margin-bottom: 8px; }
+  .away-presets .scene { flex: 1 1 0; text-align: center; padding: 11px 8px; }
+  .away-presets .scene.on { color: #fff; border-color: rgba(255, 138, 61, 0.6); background: rgba(255, 138, 61, 0.18); }
+  .away-durs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .away-dur { font-size: 10.5px; padding: 10px 4px; min-height: 42px; }
+  .away-until { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-top: 8px; }
+  .away-until input[type="time"] {
+    font-family: inherit; font-size: 13px; color: var(--txt);
+    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line);
+    border-radius: 12px; padding: 0 12px; min-height: 44px; width: 100%;
+  }
+  .away-until .btn { font-size: 10.5px; padding: 10px 12px; min-height: 44px; }
+
   /* ---------- generic panel ---------- */
   .card { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 12px; }
   .card h2 { font-size: 9.5px; letter-spacing: 0.22em; color: var(--dim); font-weight: 500; margin-bottom: 10px; }
@@ -205,6 +222,28 @@
     <div class="t-label" id="tLabel">TIME LEFT ON STREAM</div>
     <div class="t-clock" id="tClock">--:--:--</div>
     <div class="t-sub" id="tSub">connecting to the timer…</div>
+  </section>
+
+  <section class="card">
+    <h2>AWAY TIMER</h2>
+    <div class="away-status" id="awayStatus">not set</div>
+    <div class="away-presets">
+      <button class="scene" data-away="at work">AT WORK</button>
+      <button class="scene" data-away="sleeping">SLEEPING</button>
+      <button class="scene" data-away="busy">BUSY</button>
+    </div>
+    <div class="away-durs">
+      <button class="btn away-dur" data-min="30">30M</button>
+      <button class="btn away-dur" data-min="60">1H</button>
+      <button class="btn away-dur" data-min="120">2H</button>
+      <button class="btn away-dur" data-min="240">4H</button>
+      <button class="btn away-dur" data-min="480">8H</button>
+    </div>
+    <div class="away-until">
+      <input type="time" id="awayTime" aria-label="away until" />
+      <button class="btn" id="awayUntil">UNTIL</button>
+      <button class="btn stop" id="awayClear">CLEAR</button>
+    </div>
   </section>
 
   <section class="card">
@@ -475,6 +514,16 @@ function render() {
     latCls = "lat-status warn";
     latTxt = `switching to ultra-low · ${sw.step}…`;
   }
+  // Nothing on air while OBS is streaming is the failure worth shouting about,
+  // so it outranks the latency line on this card.
+  const obsS = (state.integrations.obs || {}).streaming;
+  const airNow = (state.integrations.youtube || {}).onAir || {};
+  if (obsS && !airNow.live) {
+    latCls = "lat-status bad";
+    latTxt = airNow.status === "upcoming" || airNow.status === "ready"
+      ? `broadcast ${airNow.id || "?"} is waiting for the encoder — not live yet`
+      : "NOTHING ON AIR — OBS is streaming, YouTube has no live broadcast";
+  }
   // Auto-fix: on = after every GO LIVE, switch again if the class is not
   // Ultra-low. GAVE UP means the allowed attempts ran out — the Studio stream
   // setting is the thing to look at then.
@@ -540,7 +589,73 @@ function render() {
     row.append(name, amt);
     feed.appendChild(row);
   }
+
+  renderAway(now);
 }
+
+/* ---------------- away timer ---------------- */
+// One reason plus an end time. The phone sets it; the BRB overlay counts down
+// to it so viewers know when to come back. Nothing shows while it is off.
+let awayReason = "at work";
+
+function paintAwayChoice() {
+  document.querySelectorAll("[data-away]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.away === awayReason);
+  });
+}
+
+function renderAway(now) {
+  const a = (state.integrations || {}).away || {};
+  const el = $("awayStatus");
+  el.textContent = "";
+  if (a.active && a.until > now) {
+    const end = new Date(a.until);
+    const reason = document.createElement("b");
+    reason.textContent = a.reason;
+    el.className = "away-status on";
+    el.append(reason, ` · back ${dayLabel(end)}${hhmm(end)} · ${shortDur(a.until - now)} left`);
+  } else if (a.until) {
+    el.className = "away-status";
+    el.textContent = "timer finished — pick a duration to set it again";
+  } else {
+    el.className = "away-status";
+    el.textContent = "not set — the BRB overlay shows nothing";
+  }
+  paintAwayChoice();
+}
+
+/** "18:30" from the time picker → that time today, or tomorrow if it has passed. */
+function untilFromTime(value) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+  if (!m) return 0;
+  const d = new Date();
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  if (d.getTime() <= Date.now() + 60000) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
+async function setAway(body) {
+  const r = await api("/api/away", body);
+  if (!r.ok) return flash("AWAY: " + (r.error || "failed"));
+  const a = r.away || {};
+  flash(a.active ? `AWAY: ${a.reason.toUpperCase()}` : "AWAY CLEARED");
+}
+
+document.querySelectorAll("[data-away]").forEach((b) => {
+  b.addEventListener("click", () => {
+    awayReason = b.dataset.away;
+    paintAwayChoice();
+  });
+});
+document.querySelectorAll("[data-min]").forEach((b) => {
+  b.addEventListener("click", () => setAway({ reason: awayReason, minutes: Number(b.dataset.min) }));
+});
+$("awayUntil").addEventListener("click", () => {
+  const until = untilFromTime($("awayTime").value);
+  if (!until) return flash("AWAY: pick a time first");
+  setAway({ reason: awayReason, until });
+});
+$("awayClear").addEventListener("click", () => setAway({ action: "clear" }));
 
 /* ---------------- permanent live link ---------------- */
 $("copyLink").addEventListener("click", async () => {
@@ -779,6 +894,7 @@ function connect() {
   foot.append(" · ", app);
 })();
 
+paintAwayChoice();
 api("/api/state").then(() => {
   connect();
   loadScenes();

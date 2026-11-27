@@ -6,7 +6,9 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.graphics.Insets;
+import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -15,14 +17,18 @@ import android.os.Looper;
 import android.text.SpannableStringBuilder;
 import android.text.style.StyleSpan;
 import android.util.Base64;
+import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 import android.widget.Button;
 import android.widget.HorizontalScrollView;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,9 +37,13 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -89,11 +99,21 @@ public class MainActivity extends Activity {
 
     // scenes tab: text and pictures inside one scene
     private static final int REQ_PICK_PICTURE = 4711;
-    private LinearLayout scenePickBox, sceneTextList, sceneImageList;
+    private LinearLayout scenePickBox, sceneTextList, sceneImageList, sceneToggleList;
     private TextView scenePickHint;
     private String sceneTarget = "";
     private List<String> sceneNames = new ArrayList<>();
     private JSONArray sceneSourceItems;
+    private int sceneCanvasH = 1080;
+
+    // alert preview: the same card the OBS overlay draws, rendered on the phone
+    private LinearLayout alertPreview;
+    private EditText alertName, alertAmount, alertMessage;
+
+    // live events (SSE) so state and alerts arrive without waiting for a poll
+    private volatile boolean eventsOn;
+    private volatile HttpURLConnection eventsConn;
+    private Thread eventsThread;
 
     // brb overlay texts
     private LinearLayout brbList, brbPresets;
@@ -118,6 +138,7 @@ public class MainActivity extends Activity {
     private TextView statSub, statKofi, statLike;
     private Button obsStart, obsStop, undoBtn, ytSync;
     private LinearLayout scenesBox, feedBox;
+    private TextView feedLabel;
     private HorizontalScrollView scenesScroll;
     private String lastScrolledScene = "";
 
@@ -198,7 +219,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (!inSetup && api != null) startLoops();
+        if (!inSetup && api != null) {
+            startLoops();
+            // Back from the lock screen: scenes/BRB may have moved while the
+            // app was paused, so re-read them instead of waiting for a tick.
+            refreshScenes();
+        }
     }
 
     @Override
@@ -366,6 +392,7 @@ public class MainActivity extends Activity {
         scenePickHint = findViewById(R.id.scenePickHint);
         sceneTextList = findViewById(R.id.sceneTextList);
         sceneImageList = findViewById(R.id.sceneImageList);
+        sceneToggleList = findViewById(R.id.sceneToggleList);
         brbList = findViewById(R.id.brbList);
         brbPresets = findViewById(R.id.brbPresets);
         brbStatus = findViewById(R.id.brbStatus);
@@ -394,6 +421,11 @@ public class MainActivity extends Activity {
         scenesBox = findViewById(R.id.scenes);
         scenesScroll = findViewById(R.id.scenesScroll);
         feedBox = findViewById(R.id.feed);
+        feedLabel = findViewById(R.id.feedLabel);
+        alertPreview = findViewById(R.id.alertPreview);
+        alertName = findViewById(R.id.alertName);
+        alertAmount = findViewById(R.id.alertAmount);
+        alertMessage = findViewById(R.id.alertMessage);
 
         mixVal = findViewById(R.id.mixVal);
         mixHint = findViewById(R.id.mixHint);
@@ -455,6 +487,12 @@ public class MainActivity extends Activity {
         obsStart.setOnClickListener(v -> post("/api/obs/start", null, "OBS: GO LIVE", this::refreshScenes));
         obsStop.setOnClickListener(v -> post("/api/obs/stop", null, "OBS: STREAM ENDED", this::refreshScenes));
         undoBtn.setOnClickListener(v -> post("/api/undo", null, "UNDO", null));
+
+        // Replay an alert here and on the OBS overlay, counting nothing. The
+        // phone draws the same card so the look can be checked without OBS.
+        findViewById(R.id.replaySub).setOnClickListener(v -> replay("sub"));
+        findViewById(R.id.replayKofi).setOnClickListener(v -> replay("kofi"));
+        findViewById(R.id.replayLike).setOnClickListener(v -> replay("like"));
         ytSync.setOnClickListener(v -> syncYouTube());
         ytSync2.setOnClickListener(v -> syncYouTube());
         ytUltra.setOnClickListener(v -> confirmSwitchLatency());
@@ -564,12 +602,109 @@ public class MainActivity extends Activity {
         ui.removeCallbacks(poller);
         ui.post(ticker);
         ui.post(poller);
+        startEvents();
     }
 
     private void stopLoops() {
         ui.removeCallbacks(ticker);
         ui.removeCallbacks(poller);
         ui.removeCallbacks(volumeSend);
+        stopEvents();
+    }
+
+    /* ---------------------------------------------------------- live events */
+
+    /**
+     * /api/events carries the state the moment something changes plus every
+     * alert. Keeping it open means a sub, a scene switch or a replay lands on
+     * the phone right away instead of on the next 2 s poll.
+     */
+    private void startEvents() {
+        if (eventsOn || api == null || inSetup) return;
+        eventsOn = true;
+        eventsThread = new Thread(this::eventsLoop, "events");
+        eventsThread.setDaemon(true);
+        eventsThread.start();
+    }
+
+    private void stopEvents() {
+        eventsOn = false;
+        HttpURLConnection c = eventsConn;
+        if (c != null) {
+            try {
+                c.disconnect();
+            } catch (Exception ignored) {
+            }
+        }
+        eventsThread = null;
+    }
+
+    private void eventsLoop() {
+        while (eventsOn) {
+            HttpURLConnection c = null;
+            try {
+                c = api.stream("/api/events");
+                eventsConn = c;
+                int code = c.getResponseCode();
+                if (code == 401) {
+                    ui.post(this::sessionLost);
+                    return;
+                }
+                if (code != 200) throw new IOException("HTTP " + code);
+
+                BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8));
+                String event = "message";
+                StringBuilder data = new StringBuilder();
+                String line;
+                while (eventsOn && (line = reader.readLine()) != null) {
+                    if (line.isEmpty()) {
+                        dispatchEvent(event, data.toString());
+                        event = "message";
+                        data.setLength(0);
+                    } else if (line.startsWith("event:")) {
+                        event = line.substring(6).trim();
+                    } else if (line.startsWith("data:")) {
+                        if (data.length() > 0) data.append('\n');
+                        data.append(line.substring(5).trim());
+                    }
+                    // ": ping" comment lines keep the socket alive; nothing to do.
+                }
+            } catch (IOException ignored) {
+                // relaunch, tunnel hiccup, phone asleep: reconnect below
+            } finally {
+                eventsConn = null;
+                if (c != null) {
+                    try {
+                        c.disconnect();
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+            if (!eventsOn) break;
+            try {
+                Thread.sleep(2500);
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
+    }
+
+    private void dispatchEvent(String event, String data) {
+        if (data.isEmpty()) return;
+        final JSONObject o;
+        try {
+            o = new JSONObject(data);
+        } catch (JSONException e) {
+            return;
+        }
+        if ("state".equals(event)) {
+            ui.post(() -> applyState(o));
+        } else if ("message".equals(event)) {
+            // A replay this phone just fired is already on screen.
+            if ("replay".equals(o.optString("source", ""))) return;
+            ui.post(() -> showAlertPreview(o));
+        }
     }
 
     /* -------------------------------------------------------------- polling */
@@ -890,6 +1025,151 @@ public class MainActivity extends Activity {
         if (scenePickHint != null && sceneNames.isEmpty()) scenePickHint.setText("no scenes yet (OBS offline?)");
     }
 
+    /** Show or hide one source in the scene being edited, without switching scenes. */
+    private void setSourceVisible(int sceneItemId, boolean visible) {
+        if (api == null || sceneTarget.isEmpty()) return;
+        JSONObject body = new JSONObject();
+        try {
+            body.put("scene", sceneTarget);
+            body.put("sceneItemId", sceneItemId);
+            body.put("visible", visible);
+        } catch (JSONException ignored) {
+        }
+        post("/api/obs/source/visible", body, visible ? "source shown" : "source hidden",
+            this::refreshSceneSources);
+    }
+
+    /**
+     * Move one source up or down the scene's layer stack. OBS numbers scene
+     * items from the back (0) to the front, so +1 is "in front" and -1 is
+     * "behind"; the server clamps at either end.
+     */
+    private void moveSource(int sceneItemId, int delta) {
+        if (api == null || sceneTarget.isEmpty()) return;
+        JSONObject body = new JSONObject();
+        try {
+            body.put("scene", sceneTarget);
+            body.put("sceneItemId", sceneItemId);
+            body.put("delta", delta);
+        } catch (JSONException ignored) {
+        }
+        post("/api/obs/source/order", body, delta > 0 ? "moved to front" : "moved to back",
+            this::refreshSceneSources);
+    }
+
+    /** Base body for one source's canvas move. */
+    private JSONObject positionBody(int sceneItemId) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("scene", sceneTarget);
+            body.put("sceneItemId", sceneItemId);
+        } catch (JSONException ignored) {
+        }
+        return body;
+    }
+
+    /** Send one position change and keep the open dialog's readout in step. */
+    private void nudgeSource(JSONObject body, final TextView readout) {
+        if (api == null || sceneTarget.isEmpty()) return;
+        final Api a = api;
+        net.execute(() -> {
+            try {
+                final JSONObject r = a.post("/api/obs/source/position", body);
+                ui.post(() -> {
+                    if (!r.optBoolean("ok", false)) {
+                        toast(r.optString("error", "move failed"));
+                        return;
+                    }
+                    readout.setText("y " + r.optInt("y", 0) + " / " + r.optInt("canvasH", 1080)
+                        + "  ·  step " + r.optInt("step", 0) + "px");
+                    refreshSceneSources();
+                });
+            } catch (Api.Unauthorized e) {
+                ui.post(this::sessionLost);
+            } catch (IOException e) {
+                ui.post(() -> toast("no connection"));
+            }
+        });
+    }
+
+    /**
+     * Move one source up or down on the picture itself (not the layer stack):
+     * nudge in 5% steps, or jump straight to the top, middle or bottom.
+     */
+    private void sourcePositionDialog(final int sceneItemId, String name, int startY, int canvasH) {
+        LinearLayout box = dialogBox();
+        final TextView readout = label("y " + startY + " / " + canvasH + "  ·  step " + Math.max(1, Math.round(canvasH * 0.05)) + "px");
+        readout.setTextSize(12f);
+        readout.setTextColor(color(R.color.txt));
+        box.addView(readout);
+
+        LinearLayout nudge = new LinearLayout(this);
+        nudge.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        nlp.topMargin = dp(8);
+        nudge.setLayoutParams(nlp);
+
+        Button up = smallButton("▲ UP", R.drawable.bg_btn, color(R.color.txt), 12f);
+        up.setLayoutParams(new LinearLayout.LayoutParams(0, dp(46), 1f));
+        up.setOnClickListener(v -> {
+            JSONObject b = positionBody(sceneItemId);
+            try {
+                b.put("steps", -1);
+            } catch (JSONException ignored) {
+            }
+            nudgeSource(b, readout);
+        });
+        nudge.addView(up);
+
+        Button down = smallButton("▼ DOWN", R.drawable.bg_btn, color(R.color.txt), 12f);
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        dlp.leftMargin = dp(6);
+        down.setLayoutParams(dlp);
+        down.setOnClickListener(v -> {
+            JSONObject b = positionBody(sceneItemId);
+            try {
+                b.put("steps", 1);
+            } catch (JSONException ignored) {
+            }
+            nudgeSource(b, readout);
+        });
+        nudge.addView(down);
+        box.addView(nudge);
+
+        LinearLayout jumps = new LinearLayout(this);
+        jumps.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams jlp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        jlp.topMargin = dp(6);
+        jumps.setLayoutParams(jlp);
+        String[] labels = {"TOP", "MIDDLE", "BOTTOM"};
+        String[] values = {"top", "middle", "bottom"};
+        for (int i = 0; i < labels.length; i++) {
+            final String to = values[i];
+            Button b = smallButton(labels[i], R.drawable.bg_btn_scene, color(R.color.txt), 11f);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(44), 1f);
+            if (i > 0) lp.leftMargin = dp(6);
+            b.setLayoutParams(lp);
+            b.setOnClickListener(v -> {
+                JSONObject body = positionBody(sceneItemId);
+                try {
+                    body.put("to", to);
+                } catch (JSONException ignored) {
+                }
+                nudgeSource(body, readout);
+            });
+            jumps.addView(b);
+        }
+        box.addView(jumps);
+
+        new AlertDialog.Builder(this)
+            .setTitle(name)
+            .setView(box)
+            .setNegativeButton("CLOSE", null)
+            .show();
+    }
+
     private void refreshSceneSources() {
         if (api == null || sceneTarget.isEmpty()) return;
         final Api a = api;
@@ -900,6 +1180,8 @@ public class MainActivity extends Activity {
                 ui.post(() -> {
                     if (!scene.equals(sceneTarget)) return;
                     sceneSourceItems = r.optJSONArray("items");
+                    JSONObject canvas = r.optJSONObject("canvas");
+                    sceneCanvasH = canvas == null ? 1080 : canvas.optInt("height", 1080);
                     renderSceneSources();
                 });
             } catch (Api.Unauthorized e) {
@@ -959,8 +1241,78 @@ public class MainActivity extends Activity {
             }
         }
 
-        if (texts == 0) sceneTextList.addView(label("no text sources here — tap NEW TEXT"));
-        if (pictures == 0) sceneImageList.addView(label("no png or gif here — tap ADD PNG / GIF"));
+        if (texts == 0) sceneTextList.addView(label("no text sources here — tap NEW TEXT"));        if (pictures == 0) sceneImageList.addView(label("no png or gif here — tap ADD PNG / GIF"));
+        if (sceneToggleList != null) {
+            sceneToggleList.removeAllViews();
+            int toggles = 0;
+            // Front-first, like OBS's own list: the array arrives back-to-front.
+            final int total = sceneSourceItems == null ? 0 : sceneSourceItems.length();
+            for (int i = total - 1; i >= 0; i--) {
+                JSONObject item = sceneSourceItems.optJSONObject(i);
+                if (item == null) continue;
+                String name = item.optString("name", "");
+                final int id = item.optInt("id", -1);
+                if (name.isEmpty() || id <= 0) continue;
+                final boolean on = item.optBoolean("enabled", true);
+                final int index = item.optInt("index", i);
+
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(44));
+                if (toggles > 0) rlp.topMargin = dp(6);
+                row.setLayoutParams(rlp);
+
+                final int itemY = item.optInt("y", 0);
+                final int canvasH = sceneCanvasH > 0 ? sceneCanvasH : 1080;
+                TextView nm = label(name + "  ⇕");
+                nm.setTextSize(11.5f);
+                nm.setTextColor(color(on ? R.color.txt : R.color.faint));
+                nm.setSingleLine(true);
+                nm.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+                nm.setOnClickListener(v -> sourcePositionDialog(id, name, itemY, canvasH));
+                row.addView(nm, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+                // ▲ toward the front of the scene, ▼ toward the back.
+                final boolean canUp = index < total - 1;
+                final boolean canDown = index > 0;
+                Button up = smallButton("▲", R.drawable.bg_btn_scene,
+                    color(canUp ? R.color.txt : R.color.faint), 11f);
+                up.setPadding(0, 0, 0, 0);
+                up.setEnabled(canUp);
+                up.setAlpha(canUp ? 1f : 0.3f);
+                up.setOnClickListener(v -> moveSource(id, 1));
+                LinearLayout.LayoutParams ulp = new LinearLayout.LayoutParams(dp(34), dp(34));
+                ulp.rightMargin = dp(4);
+                row.addView(up, ulp);
+
+                Button down = smallButton("▼", R.drawable.bg_btn_scene,
+                    color(canDown ? R.color.txt : R.color.faint), 11f);
+                down.setPadding(0, 0, 0, 0);
+                down.setEnabled(canDown);
+                down.setAlpha(canDown ? 1f : 0.3f);
+                down.setOnClickListener(v -> moveSource(id, -1));
+                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(34), dp(34));
+                dlp.rightMargin = dp(4);
+                row.addView(down, dlp);
+
+                Button pill = smallButton(on ? "ON" : "OFF", R.drawable.bg_btn_scene,
+                    color(on ? R.color.ok : R.color.faint), 10f);
+                pill.setPadding(dp(16), 0, dp(16), 0);
+                pill.setOnClickListener(v -> setSourceVisible(id, !on));
+                row.addView(pill, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)));
+
+                sceneToggleList.addView(row);
+                toggles++;
+            }
+            if (toggles == 0) {
+                sceneToggleList.addView(label("no sources in this scene (OBS offline?)"));
+            }
+        }
+
         if (scenePickHint != null) {
             scenePickHint.setText(sceneTarget.isEmpty()
                 ? "tap a scene above"
@@ -1972,6 +2324,30 @@ public class MainActivity extends Activity {
     private void renderFeed() {
         if (feedBox == null) return;
         fillLog(feedBox, 4);
+        // Say when the newest event was, so a quiet hour reads as quiet and not
+        // as a frozen app.
+        if (feedLabel != null) {
+            JSONArray log = state == null ? null : state.optJSONArray("log");
+            JSONObject last = log == null || log.length() == 0
+                    ? null : log.optJSONObject(log.length() - 1);
+            if (last == null) {
+                feedLabel.setText("ACTIVITY · nothing yet");
+            } else {
+                long at = last.optLong("at", 0);
+                String age = ageText(System.currentTimeMillis() + offset - at);
+                feedLabel.setText("ACTIVITY · last " + hhmm(at) + (age.isEmpty() ? "" : " · " + age + " ago"));
+            }
+        }
+    }
+
+    /** "5m", "2h 43m", "1d 6h"; empty under a minute. */
+    private static String ageText(long ms) {
+        long min = Math.max(0, ms) / 60000;
+        if (min < 1) return "";
+        if (min < 60) return min + "m";
+        long h = min / 60;
+        if (h < 24) return h + "h " + (min % 60) + "m";
+        return (h / 24) + "d " + (h % 24) + "h";
     }
 
     private void renderLog() {
@@ -2130,6 +2506,235 @@ public class MainActivity extends Activity {
         } catch (JSONException ignored) {
         }
         post("/api/obs/scene", b, "SCENE: " + name, this::refreshScenes);
+    }
+
+    /* --------------------------------------------------------- alert preview */
+
+    /**
+     * Replay one alert face: draws it on this phone and asks the server to send
+     * the same card to the OBS overlay. Nothing is counted either way.
+     */
+    private void replay(String type) {
+        String name = alertName.getText().toString().trim();
+        String amount = alertAmount.getText().toString().trim();
+        String message = alertMessage.getText().toString().trim();
+
+        JSONObject b = body("type", type);
+        with(b, "name", name);
+        with(b, "amountText", amount);
+        with(b, "message", message);
+
+        JSONObject local = new JSONObject();
+        with(local, "type", type);
+        with(local, "test", true);
+        with(local, "amountMs", amountMsFor(type));
+        with(local, "name", name.isEmpty() ? sampleName(type) : name);
+        with(local, "amountText", amount.isEmpty() ? sampleAmount(type) : amount);
+        with(local, "message", message.isEmpty() ? sampleMessage(type) : message);
+        showAlertPreview(local);
+
+        post("/api/replay", b, null, null);
+    }
+
+    private static String sampleName(String type) {
+        return "kofi".equals(type) ? "test_supporter" : "test_viewer";
+    }
+
+    private static String sampleAmount(String type) {
+        return "kofi".equals(type) ? "€5" : "";
+    }
+
+    private static String sampleMessage(String type) {
+        return "kofi".equals(type) ? "for the 24h run!" : "";
+    }
+
+    /** The notification card from notifications.html, rebuilt with native views. */
+    private void showAlertPreview(JSONObject n) {
+        if (alertPreview == null || n == null) return;
+        final String type = n.optString("type", "sub");
+        final int color = alertColor(type);
+        String who = n.optString("name", "");
+        if (who.isEmpty()) who = "Someone";
+        String message = n.optString("message", "");
+        String cash = n.optString("amountText", "");
+        long amountMs = n.optLong("amountMs", amountMsFor(type));
+
+        alertPreview.removeAllViews();
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xF20A0A0E);
+        bg.setCornerRadius(dp(14));
+        bg.setStroke(dp(1), 0x1AFFFFFF);
+        card.setBackground(bg);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(12), dp(14), dp(12));
+
+        View stripe = new View(this);
+        GradientDrawable sg = new GradientDrawable();
+        sg.setColor(color);
+        sg.setCornerRadius(dp(2));
+        stripe.setBackground(sg);
+        row.addView(stripe, new LinearLayout.LayoutParams(dp(4), dp(46)));
+
+        TextView glyph = new TextView(this);
+        glyph.setText(alertGlyph(type));
+        glyph.setTextColor(color);
+        glyph.setTextSize(17);
+        glyph.setGravity(Gravity.CENTER);
+        GradientDrawable ig = new GradientDrawable();
+        ig.setColor(withAlpha(color, 0x26));
+        ig.setCornerRadius(dp(10));
+        ig.setStroke(dp(1), withAlpha(color, 0x59));
+        glyph.setBackground(ig);
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(dp(40), dp(40));
+        glp.leftMargin = dp(10);
+        row.addView(glyph, glp);
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams tlp =
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        tlp.leftMargin = dp(10);
+        row.addView(text, tlp);
+
+        TextView kicker = new TextView(this);
+        kicker.setText(alertAction(type) + (n.optBoolean("test") ? " · TEST" : ""));
+        kicker.setTextColor(color);
+        kicker.setTextSize(9.5f);
+        kicker.setLetterSpacing(0.14f);
+        kicker.setTypeface(Typeface.MONOSPACE);
+        text.addView(kicker);
+
+        TextView name = new TextView(this);
+        name.setText(who);
+        name.setTextColor(0xFFF4F4F7);
+        name.setTextSize(15);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        text.addView(name);
+
+        if (!message.isEmpty()) {
+            TextView msg = new TextView(this);
+            msg.setText(message);
+            msg.setTextColor(0xFFB6B6C4);
+            msg.setTextSize(11.5f);
+            msg.setMaxLines(2);
+            msg.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            text.addView(msg);
+        }
+
+        LinearLayout amt = new LinearLayout(this);
+        amt.setOrientation(LinearLayout.VERTICAL);
+        amt.setGravity(Gravity.END);
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        alp.leftMargin = dp(8);
+        row.addView(amt, alp);
+
+        if (!cash.isEmpty()) {
+            TextView c = new TextView(this);
+            c.setText(cash);
+            c.setTextColor(color);
+            c.setTextSize(15);
+            c.setTypeface(Typeface.DEFAULT_BOLD);
+            c.setGravity(Gravity.END);
+            amt.addView(c);
+        }
+        TextView time = new TextView(this);
+        time.setText(alertTime(amountMs));
+        time.setTextColor(0xFF8D8D9B);
+        time.setTextSize(10.5f);
+        time.setLetterSpacing(0.04f);
+        time.setGravity(Gravity.END);
+        amt.addView(time);
+
+        card.addView(row);
+
+        View bar = new View(this);
+        GradientDrawable bgb = new GradientDrawable();
+        bgb.setColor(0x29FFFFFF);
+        bar.setBackground(bgb);
+        card.addView(bar, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(2)));
+
+        alertPreview.addView(card);
+        final View shown = card;
+        // The card sits low on the LIVE tab, so bring it into view or the whole
+        // check is hidden under the navigation bar.
+        if (tab == 0) {
+            shown.postDelayed(() -> {
+                ScrollView page = findViewById(R.id.pageScroll);
+                if (page == null) return;
+                int want = alertPreview.getBottom() - page.getHeight() + dp(20);
+                page.smoothScrollTo(0, Math.max(0, want));
+            }, 90);
+        }
+
+        // Slide in and drain exactly like the overlay card does.
+        shown.setAlpha(0f);
+        shown.setTranslationX(dp(70));
+        shown.animate().alpha(1f).translationX(0f).setDuration(380)
+                .setInterpolator(new DecelerateInterpolator()).start();
+        bar.setPivotX(0f);
+        bar.animate().scaleX(0f).setDuration(6000)
+                .setInterpolator(new LinearInterpolator()).start();
+
+        shown.postDelayed(() -> {
+            if (shown.getParent() != alertPreview) return;
+            shown.animate().alpha(0f).translationX(dp(70)).setDuration(300).start();
+            shown.postDelayed(() -> {
+                if (alertPreview != null && shown.getParent() == alertPreview) {
+                    alertPreview.removeView(shown);
+                }
+            }, 320);
+        }, 6000);
+    }
+
+    private static int alertColor(String type) {
+        if ("kofi".equals(type)) return 0xFF5CC8F2;
+        if ("like".equals(type)) return 0xFFFFA76B;
+        return 0xFFFF6B85;
+    }
+
+    private static String alertAction(String type) {
+        if ("kofi".equals(type)) return "DONATED";
+        if ("like".equals(type)) return "LIKED THE STREAM";
+        return "SUBSCRIBED";
+    }
+
+    private static String alertGlyph(String type) {
+        if ("kofi".equals(type)) return "€";
+        if ("like".equals(type)) return "♥";
+        return "+";
+    }
+
+    private static long amountMsFor(String type) {
+        if ("kofi".equals(type)) return 1800000;
+        if ("like".equals(type)) return 30000;
+        return 300000;
+    }
+
+    private static String alertTime(long ms) {
+        long s = Math.round(ms / 1000.0);
+        if (s >= 3600) return "+" + (s / 3600) + "h";
+        if (s >= 60) return "+" + (s / 60) + ":" + String.format(Locale.US, "%02d", s % 60);
+        return "+0:" + String.format(Locale.US, "%02d", s);
+    }
+
+    private static int withAlpha(int color, int alpha) {
+        return (color & 0x00FFFFFF) | ((alpha & 0xFF) << 24);
+    }
+
+    private static JSONObject with(JSONObject o, String key, Object value) {
+        try {
+            o.put(key, value);
+        } catch (JSONException ignored) {
+        }
+        return o;
     }
 
     private void post(final String path, JSONObject payload, final String okMessage, final Runnable after) {
