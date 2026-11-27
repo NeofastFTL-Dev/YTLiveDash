@@ -2379,7 +2379,7 @@ async function readJson(req) {
 // Only these browser files are reachable. config.json (API key, Ko-fi token),
 // state.json and the server modules must never be downloadable.
 const PUBLIC_FILES = new Set([
-  "index.html", "overlay.html", "countdown.html", "nowplaying.html", "notifications.html", "ytpmvs.html", "brb.html", "app.js", "style.css",
+  "index.html", "overlay.html", "countdown.html", "nowplaying.html", "notifications.html", "ytpmvs.html", "brb.html", "away.html", "app.js", "style.css",
   "mobile.html", "manifest.webmanifest", "emilli-remote.apk", "latency-clock.html",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png",
   "sounds/course-clear.mp3",
@@ -2700,6 +2700,173 @@ async function centerItem(sceneName, sceneItemId, w, h) {
   } catch {
     /* OBS's own placement is fine if the transform call is refused */
   }
+}
+
+/* --------------------------------------------------- away timer on every scene */
+
+/**
+ * "Back at X" is only useful if it is over whatever is on air, and an OBS
+ * browser source lives in a single scene. So one source ("Away Timer" →
+ * /away.html) is kept in every scene, stacked on top, and enabled only while
+ * the timer runs. The BRB scene is skipped: its own line already carries the
+ * countdown under the text.
+ */
+const AWAY_OVERLAY = "Away Timer";
+let awayOverlayChain = Promise.resolve();
+
+function syncAwayOverlay() {
+  // A tap on the phone and the 30 s sweep can land together; run them in turn.
+  awayOverlayChain = awayOverlayChain.then(syncAwayOverlayNow, syncAwayOverlayNow);
+  return awayOverlayChain;
+}
+
+async function syncAwayOverlayNow() {
+  if (!config.obs.enabled || !obs.authenticated) {
+    return { ok: false, error: obs.lastError || "OBS not connected" };
+  }
+  const active = away.summary().active;
+  let canvasW = 1920;
+  let canvasH = 1080;
+  try {
+    const v = await obs.request("GetVideoSettings");
+    canvasW = v.baseWidth || v.outputWidth || 1920;
+    canvasH = v.baseHeight || v.outputHeight || 1080;
+  } catch {
+    /* assume 1080p */
+  }
+
+  const { scenes = [] } = await obs.request("GetSceneList");
+  const names = scenes.map((s) => s.sceneName).filter(Boolean);
+  const items = new Map();
+  for (const name of names) {
+    try {
+      items.set(name, (await obs.request("GetSceneItemList", { sceneName: name })).sceneItems || []);
+    } catch {
+      /* a scene that will not list is left alone */
+    }
+  }
+
+  const holder = names.find((n) => (items.get(n) || []).some((i) => i.sourceName === AWAY_OVERLAY));
+  if (!holder && !active) return { ok: true, active, scenes: names.length, changed: [] };
+
+  // Scenes already showing the countdown under the BRB line are left alone.
+  const skip = new Set();
+  try {
+    const kinds = new Map();
+    const list = await obs.request("GetInputList");
+    for (const i of list.inputs || []) kinds.set(i.inputName, i.inputKind);
+    const urls = new Map();
+    for (const name of names) {
+      for (const it of items.get(name) || []) {
+        const src = it.sourceName;
+        if (!src || src === AWAY_OVERLAY || kinds.get(src) !== "browser_source") continue;
+        if (!urls.has(src)) {
+          let url = "";
+          try {
+            url = String(((await obs.request("GetInputSettings", { inputName: src })).inputSettings || {}).url || "");
+          } catch {
+            /* unknown url: treat it as not the BRB page */
+          }
+          urls.set(src, url);
+        }
+        if (/\/brb\.html/i.test(urls.get(src))) {
+          skip.add(name);
+          break;
+        }
+      }
+    }
+  } catch {
+    /* no input list: add the overlay everywhere */
+  }
+
+  // One browser source, shared by every scene, so a style change made in OBS
+  // carries over to all scenes at once.
+  const settings = {
+    url: `http://127.0.0.1:${PORT}/away.html`,
+    width: canvasW,
+    height: canvasH,
+    fps_custom: false,
+    fps: 30,
+    shutdown: false,
+    restart_when_active: false,
+    css: "body { background-color: rgba(0, 0, 0, 0); margin: 0; overflow: hidden; }",
+  };
+
+  const changed = [];
+  let source = holder;
+  if (source) {
+    try {
+      await obs.request("SetInputSettings", { inputName: AWAY_OVERLAY, inputSettings: settings, overlay: true });
+    } catch (e) {
+      console.log(`[away] could not update the overlay source: ${e.message}`);
+    }
+  }
+
+  for (const name of names) {
+    let item = (items.get(name) || []).find((i) => i.sourceName === AWAY_OVERLAY) || null;
+    if (!item) {
+      // Only while the timer runs: a disabled copy in every scene would just be
+      // one more layer to click past in OBS for the rest of the week.
+      if (!active || skip.has(name)) continue;
+      try {
+        if (!source) {
+          const created = await obs.request("CreateInput", {
+            sceneName: name,
+            inputName: AWAY_OVERLAY,
+            inputKind: "browser_source",
+            inputSettings: settings,
+            sceneItemEnabled: true,
+          });
+          item = { sceneItemId: created.sceneItemId, sceneItemEnabled: true };
+          source = name;
+        } else {
+          const created = await obs.request("CreateSceneItem", {
+            sceneName: name,
+            sourceName: AWAY_OVERLAY,
+            sceneItemEnabled: true,
+          });
+          item = { sceneItemId: created.sceneItemId, sceneItemEnabled: true };
+        }
+        changed.push(`+${name}`);
+      } catch (e) {
+        console.log(`[away] could not add the overlay to "${name}": ${e.message}`);
+        continue;
+      }
+    }
+    const sceneItemId = Number(item.sceneItemId);
+    if (!Number.isFinite(sceneItemId)) continue;
+    // Topmost, pinned to the canvas origin and never scaled, so the pill lands
+    // in the same spot in every scene.
+    try {
+      await obs.request("SetSceneItemIndex", { sceneName: name, sceneItemId, sceneItemIndex: 0 });
+      await obs.request("SetSceneItemTransform", {
+        sceneName: name,
+        sceneItemId,
+        sceneItemTransform: {
+          alignment: 5, // top-left: positionX/Y are the canvas origin
+          positionX: 0,
+          positionY: 0,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          boundsType: "OBS_BOUNDS_NONE",
+        },
+      });
+    } catch (e) {
+      console.log(`[away] could not lift the overlay in "${name}": ${e.message}`);
+    }
+    if (!!item.sceneItemEnabled !== active) {
+      try {
+        await obs.request("SetSceneItemEnabled", { sceneName: name, sceneItemId, sceneItemEnabled: active });
+        changed.push(`${active ? "on" : "off"}:${name}`);
+      } catch (e) {
+        console.log(`[away] could not toggle the overlay in "${name}": ${e.message}`);
+      }
+    }
+  }
+
+  if (changed.length) console.log(`[away] overlay ${changed.join(" ")}`);
+  return { ok: true, active, scenes: names, changed };
 }
 
 // Every source in one scene, with just enough detail for the phone to edit the
@@ -3245,8 +3412,11 @@ const server = http.createServer(async (req, res) => {
       else if (action === "schedule-add") r = away.addShift(body);
       else if (action === "schedule-remove") r = away.removeShift(body.id);
       else r = away.set(body.reason, body.minutes, body.until);
+      // The countdown has to reach every scene, not only the BRB one; an OBS
+      // failure must not make the timer itself look broken.
+      const overlay = await syncAwayOverlay().catch((e) => ({ ok: false, error: e.message }));
       if (r.ok) broadcast("state", publicState());
-      return json(res, { ...r, state: publicState() }, r.ok ? 200 : 400);
+      return json(res, { ...r, overlay, state: publicState() }, r.ok ? 200 : 400);
     }
 
     // Twitch queue for the asleep scene (relay on 127.0.0.1:8099).
@@ -3765,6 +3935,11 @@ setInterval(autoStartIfDue, 1000);
 setInterval(streamTick, 1000);
 setInterval(watchLatency, 1000);
 setInterval(pollObsHealth, 3000);
+// New scenes, a restarted OBS and a shift ending without anyone touching the
+// phone all need the overlay moved along; 30 s is well under "noticeable".
+setInterval(() => {
+  if (obs.authenticated) syncAwayOverlay().catch(() => {});
+}, 30000);
 setInterval(() => pollYouTube("interval"), Math.max(15, config.youtube.pollSeconds) * 1000);
 setInterval(() => {
   pollRecentSubs("interval").catch((e) => console.error("[yt-subs]", e.message));

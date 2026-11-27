@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Away</title>
+<style>
+  /* Sits on top of whatever scene is on air while the away timer runs, so it
+     must never paint a background: OBS composites this page straight onto the
+     stream. */
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent; overflow: hidden;
+  }
+  #wrap {
+    position: absolute; left: 50%; top: 42px;
+    transform: translateX(-50%);
+    display: none;
+  }
+  #wrap.on { display: block; }
+  #pill {
+    display: flex; align-items: center; gap: 22px;
+    padding: 16px 34px 18px;
+    border-radius: 999px;
+    /* No backdrop-filter: in OBS's Chromium it forces a GPU layer that can
+       render as a solid colour block over transparency. */
+    background: rgba(10, 10, 14, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 20px 60px -28px rgba(0, 0, 0, 0.95);
+    white-space: nowrap;
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+  }
+  #dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #ff2d55;
+    box-shadow: 0 0 0 0 rgba(255, 45, 85, 0.75);
+    animation: ping 2s ease-out infinite;
+    flex: none;
+  }
+  @keyframes ping {
+    0%   { box-shadow: 0 0 0 0 rgba(255, 45, 85, 0.7); }
+    70%  { box-shadow: 0 0 0 16px rgba(255, 45, 85, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 45, 85, 0); }
+  }
+  #reason {
+    font-size: 34px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: #fff;
+  }
+  #back { font-size: 30px; color: #c9c9d6; letter-spacing: .04em; }
+  #left {
+    font-size: 34px; font-weight: 700; letter-spacing: .02em;
+    background: linear-gradient(180deg, #fff 20%, #ff9db0 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+</style>
+</head>
+<body>
+<div id="wrap"><div id="pill">
+  <span id="dot"></span>
+  <span id="reason"></span>
+  <span id="back"></span>
+  <span id="left"></span>
+</div></div>
+<script>
+  // The timer itself lives on the server (/api/away) so every scene's copy of
+  // this page agrees. The countdown is ticked locally from the end time; the
+  // whole pill disappears the second it runs out.
+  const wrap = document.getElementById("wrap");
+  const reasonEl = document.getElementById("reason");
+  const backEl = document.getElementById("back");
+  const leftEl = document.getElementById("left");
+
+  let until = 0;
+  let reason = "";
+
+  function clockText(ms) {
+    const d = new Date(ms);
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+
+  function hhmmss(left) {
+    const h = Math.floor(left / 3600000);
+    const m = Math.floor((left % 3600000) / 60000);
+    const s = Math.floor((left % 60000) / 1000);
+    if (h) return h + "h " + String(m).padStart(2, "0") + "m";
+    if (m) return m + "m " + String(s).padStart(2, "0") + "s";
+    return s + "s";
+  }
+
+  function tick() {
+    const left = until - Date.now();
+    if (!until || left <= 0) {
+      wrap.classList.remove("on");
+      until = 0;
+      return;
+    }
+    wrap.classList.add("on");
+    reasonEl.textContent = reason || "away";
+    backEl.textContent = "back " + clockText(until);
+    leftEl.textContent = hhmmss(left) + " left";
+  }
+
+  async function load() {
+    try {
+      const res = await fetch("/api/away", { cache: "no-store" });
+      const j = await res.json();
+      until = j && j.active ? Number(j.until) || 0 : 0;
+      reason = (j && j.reason) || "";
+    } catch (e) {
+      /* keep the last known timer; a dropped poll is not a reason to vanish */
+    }
+    tick();
+  }
+
+  load();
+  setInterval(tick, 1000);
+  setInterval(load, 10000);
+</script>
+</body>
+</html>
