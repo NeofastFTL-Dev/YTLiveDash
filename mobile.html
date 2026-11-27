@@ -91,6 +91,33 @@
   }
   .away-until .btn { font-size: 10.5px; padding: 10px 12px; min-height: 44px; }
 
+  /* weekly shifts: one row per shift, plus the editor under them */
+  .away-next { font-size: 11px; color: var(--dim); margin: 0 0 9px; }
+  .away-next.on { color: var(--txt); }
+  .away-shift {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    font-size: 11px; color: var(--txt); padding: 7px 9px; margin-bottom: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px;
+  }
+  .away-shift.on { border-color: rgba(55, 227, 155, 0.5); color: #9dffcf; }
+  .away-shift .mini { flex: 0 0 auto; }
+  .away-shift-empty { font-size: 11px; color: var(--dim); margin-bottom: 6px; }
+  .away-shift-add { width: 100%; margin-top: 4px; font-size: 10.5px; padding: 11px 8px; min-height: 42px; }
+  .away-editor { margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+  .away-editor[hidden] { display: none; }
+  .away-days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .away-day { font-size: 10.5px; padding: 10px 4px; min-height: 40px; }
+  .away-day.on { color: #fff; border-color: rgba(255, 138, 61, 0.6); background: rgba(255, 138, 61, 0.18); }
+  .away-times { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+  .away-times input[type="time"] {
+    font-family: inherit; font-size: 12px; color: var(--txt); padding: 10px 8px; min-height: 42px;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;
+  }
+  .away-editor-reasons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .away-editor-reasons .btn { flex: 1 1 calc(50% - 3px); font-size: 10.5px; padding: 10px 6px; min-height: 40px; }
+  .away-editor-reasons .btn.on { color: #fff; border-color: rgba(255, 138, 61, 0.6); background: rgba(255, 138, 61, 0.18); }
+  .away-editor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+
   /* ---------- generic panel ---------- */
   .card { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 12px; }
   .card h2 { font-size: 9.5px; letter-spacing: 0.22em; color: var(--dim); font-weight: 500; margin-bottom: 10px; }
@@ -227,6 +254,7 @@
   <section class="card">
     <h2>AWAY TIMER</h2>
     <div class="away-status" id="awayStatus">not set</div>
+    <div class="away-next" id="awayNext">no shifts scheduled</div>
     <div class="away-presets" id="awayPresets"></div>
     <div class="away-durs">
       <button class="btn away-dur" data-min="30">30M</button>
@@ -239,6 +267,22 @@
       <input type="time" id="awayTime" aria-label="away until" />
       <button class="btn" id="awayUntil">UNTIL</button>
       <button class="btn stop" id="awayClear">CLEAR</button>
+    </div>
+
+    <div class="away-shifts" id="awayShifts"></div>
+    <button class="btn away-shift-add" id="awayAddShift">ADD WEEKLY SHIFT</button>
+
+    <div class="away-editor" id="awayEditor" hidden>
+      <div class="away-days" id="awayDays"></div>
+      <div class="away-times">
+        <input type="time" id="awayStart" value="09:00" aria-label="shift start" />
+        <input type="time" id="awayEnd" value="17:00" aria-label="shift end" />
+      </div>
+      <div class="away-editor-reasons" id="awayEditorReasons"></div>
+      <div class="away-editor-actions">
+        <button class="btn go" id="awayShiftSave">SAVE SHIFT</button>
+        <button class="btn stop" id="awayShiftCancel">CANCEL</button>
+      </div>
     </div>
   </section>
 
@@ -593,6 +637,12 @@ function render() {
 // One reason plus an end time. The phone sets it; the BRB overlay counts down
 // to it so viewers know when to come back. Nothing shows while it is off.
 let awayReason = "";
+let awayReasons = [];       // /api/away presets, used by the editor too
+let shiftDays = [];         // days picked in the editor (0 = Sunday)
+let shiftReason = "";       // reason picked in the editor
+let shiftsSig = "";         // so the 250 ms render keeps the list's buttons alive
+
+const DAY_ORDER = [["MON", 1], ["TUE", 2], ["WED", 3], ["THU", 4], ["FRI", 5], ["SAT", 6], ["SUN", 0]];
 
 // The reasons are the server's list (away.js PRESETS): adding one there is the
 // only edit, and both remotes build their buttons from it on load.
@@ -602,6 +652,7 @@ async function loadAwayPresets() {
     ? r.presets.filter((x) => typeof x === "string" && x.trim())
     : [];
   if (!reasons.length) return;
+  awayReasons = reasons;
   const box = $("awayPresets");
   box.textContent = "";
   for (const reason of reasons) {
@@ -617,6 +668,7 @@ async function loadAwayPresets() {
   }
   if (!reasons.includes(awayReason)) awayReason = reasons[0];
   paintAwayChoice();
+  buildShiftEditor();
 }
 
 function paintAwayChoice() {
@@ -643,7 +695,141 @@ function renderAway(now) {
     el.textContent = "not set — the BRB overlay shows nothing";
   }
   paintAwayChoice();
+  renderAwayShifts(a);
+  renderAwayNext(a);
 }
+
+/* ---------------- weekly shifts ---------------- */
+// "Mon–Fri 09:00–17:00 · at work" rows, their delete buttons, and the editor
+// under them. The reasons come from /api/away like the manual timer's do.
+function shiftText(shift) {
+  const on = new Set(Array.isArray(shift.days) ? shift.days : []);
+  let span;
+  if ([1, 2, 3, 4, 5].every((d) => on.has(d))) span = "Mon–Fri";
+  else span = DAY_ORDER.filter(([, day]) => on.has(day))
+    .map(([label]) => label[0] + label.slice(1).toLowerCase()).join(" ");
+  return `${span} ${shift.start}–${shift.end} · ${shift.reason}`;
+}
+
+function renderAwayNext(away) {
+  const el = $("awayNext");
+  const next = away && away.next;
+  if (!next) {
+    el.className = "away-next";
+    el.textContent = "no shifts scheduled";
+    return;
+  }
+  const at = new Date(next.at);
+  el.className = "away-next on";
+  el.textContent = `next: ${at.toLocaleDateString(undefined, { weekday: "short" })} ${hhmm(at)} · ${next.reason}`;
+}
+
+function renderAwayShifts(away) {
+  const list = away && Array.isArray(away.schedule) ? away.schedule : [];
+  const running = (away && away.shiftId) || "";
+  const sig = list.map((s) => `${s.id}:${s.start}-${s.end}:${s.reason}:${(s.days || []).join("")}`).join("|") + "#" + running;
+  if (sig === shiftsSig) return;
+  shiftsSig = sig;
+
+  const box = $("awayShifts");
+  box.textContent = "";
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "away-shift-empty";
+    empty.textContent = "no shifts yet — ADD WEEKLY SHIFT makes one";
+    box.appendChild(empty);
+    return;
+  }
+  for (const shift of list) {
+    const row = document.createElement("div");
+    row.className = "away-shift" + (shift.id === running ? " on" : "");
+    const text = document.createElement("span");
+    text.textContent = shiftText(shift) + (shift.id === running ? " · ▶ now" : "");
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "mini";
+    del.textContent = "✕";
+    del.title = "delete this shift";
+    del.addEventListener("click", () => saveShift({ action: "schedule-remove", id: shift.id }, "SHIFT REMOVED"));
+    row.append(text, del);
+    box.appendChild(row);
+  }
+}
+
+function paintShiftDays() {
+  document.querySelectorAll("#awayDays .away-day").forEach((b) => {
+    b.classList.toggle("on", shiftDays.includes(Number(b.dataset.day)));
+  });
+}
+
+function paintShiftReasons() {
+  document.querySelectorAll("#awayEditorReasons .btn").forEach((b) => {
+    b.classList.toggle("on", b.dataset.reason === shiftReason);
+  });
+}
+
+function buildShiftEditor() {
+  const days = $("awayDays");
+  days.textContent = "";
+  for (const [label, value] of DAY_ORDER) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn away-day";
+    b.textContent = label;
+    b.dataset.day = String(value);
+    b.addEventListener("click", () => {
+      const day = Number(b.dataset.day);
+      if (shiftDays.includes(day)) shiftDays = shiftDays.filter((d) => d !== day);
+      else shiftDays = [...shiftDays, day];
+      paintShiftDays();
+    });
+    days.appendChild(b);
+  }
+
+  const reasons = $("awayEditorReasons");
+  reasons.textContent = "";
+  for (const reason of awayReasons) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn";
+    b.dataset.reason = reason;
+    b.textContent = reason.toUpperCase();
+    b.addEventListener("click", () => {
+      shiftReason = reason;
+      paintShiftReasons();
+    });
+    reasons.appendChild(b);
+  }
+  if (!shiftReason) shiftReason = awayReasons[0] || "at work";
+  paintShiftDays();
+  paintShiftReasons();
+}
+
+function openShiftEditor() {
+  if (!shiftDays.length) shiftDays = [1, 2, 3, 4, 5];   // a work week is the usual case
+  paintShiftDays();
+  paintShiftReasons();
+  $("awayEditor").hidden = false;
+}
+
+async function saveShift(body, okText) {
+  const r = await api("/api/away", body);
+  if (!r.ok) return flash("AWAY: " + (r.error || "failed"));
+  flash(okText);
+  if (body.action === "schedule-add") $("awayEditor").hidden = true;
+}
+
+$("awayAddShift").addEventListener("click", openShiftEditor);
+$("awayShiftCancel").addEventListener("click", () => { $("awayEditor").hidden = true; });
+$("awayShiftSave").addEventListener("click", () => {
+  if (!shiftDays.length) return flash("SHIFT: pick at least one day");
+  const start = $("awayStart").value;
+  const end = $("awayEnd").value;
+  if (!/^\d{1,2}:\d{2}$/.test(start) || !/^\d{1,2}:\d{2}$/.test(end)) {
+    return flash("SHIFT: pick a start and an end");
+  }
+  saveShift({ action: "schedule-add", days: [...shiftDays], start, end, reason: shiftReason || "at work" }, "SHIFT SAVED");
+});
 
 /** "18:30" from the time picker → that time today, or tomorrow if it has passed. */
 function untilFromTime(value) {
