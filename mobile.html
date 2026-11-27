@@ -78,8 +78,8 @@
   .away-status { font-size: 11.5px; line-height: 1.5; color: var(--dim); margin-bottom: 9px; }
   .away-status.on { color: #ffd9c8; }
   .away-status b { color: var(--txt); font-weight: 600; }
-  .away-presets { display: flex; gap: 8px; margin-bottom: 8px; }
-  .away-presets .scene { flex: 1 1 0; text-align: center; padding: 11px 8px; }
+  .away-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .away-presets .scene { flex: 1 1 calc(50% - 4px); text-align: center; padding: 11px 8px; }
   .away-presets .scene.on { color: #fff; border-color: rgba(255, 138, 61, 0.6); background: rgba(255, 138, 61, 0.18); }
   .away-durs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
   .away-dur { font-size: 10.5px; padding: 10px 4px; min-height: 42px; }
@@ -229,6 +229,7 @@
     <div class="away-status" id="awayStatus">not set</div>
     <div class="away-presets">
       <button class="scene" data-away="at work">AT WORK</button>
+      <button class="scene" data-away="outside">OUTSIDE</button>
       <button class="scene" data-away="sleeping">SLEEPING</button>
       <button class="scene" data-away="busy">BUSY</button>
     </div>

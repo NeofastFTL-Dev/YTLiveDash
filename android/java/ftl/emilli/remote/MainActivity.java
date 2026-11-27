@@ -114,6 +114,12 @@ public class MainActivity extends Activity {
     private LinearLayout layoutSceneBox, panelLayout;
     private boolean layoutLoading;
 
+    // away timer: a reason plus the clock time the stream is back
+    private TextView awayStatus;
+    private LinearLayout awayPresets, awayDurs;
+    private String awayReason = "at work";
+    private JSONObject lastAway;
+
     // alert preview: the same card the OBS overlay draws, rendered on the phone
     private LinearLayout alertPreview;
     private EditText alertName, alertAmount, alertMessage;
@@ -489,6 +495,14 @@ public class MainActivity extends Activity {
         tabMixer.setOnClickListener(v -> showTab(7));
         tabLayout.setOnClickListener(v -> showTab(8));
         bindLayoutCanvas();
+
+        awayStatus = findViewById(R.id.awayStatus);
+        awayPresets = findViewById(R.id.awayPresets);
+        awayDurs = findViewById(R.id.awayDurs);
+        findViewById(R.id.awayUntil).setOnClickListener(v -> pickAwayUntil());
+        findViewById(R.id.awayClear).setOnClickListener(v -> setAway(null, 0, 0));
+        buildAwayChoices();
+        renderAwayStatus(null);
         findViewById(R.id.sceneAddText).setOnClickListener(v -> newSceneText());
         findViewById(R.id.sceneAddImage).setOnClickListener(v -> pickPicture());
 
@@ -892,6 +906,7 @@ public class MainActivity extends Activity {
 
         JSONObject integ = state.optJSONObject("integrations");
         JSONObject ob = integ == null ? null : integ.optJSONObject("obs");
+        renderAwayStatus(integ == null ? null : integ.optJSONObject("away"));
         boolean enabled = ob != null && ob.optBoolean("enabled");
         boolean connected = ob != null && ob.optBoolean("connected");
         boolean streaming = ob != null && ob.optBoolean("streaming");
@@ -1841,6 +1856,114 @@ public class MainActivity extends Activity {
     }
 
     /* --------------------------------------------------------------- twitch */
+
+    /* ------------------------------------------------------------ away timer */
+
+    private static final String[] AWAY_REASONS = {"at work", "outside", "sleeping", "busy"};
+    private static final int[] AWAY_MINUTES = {30, 60, 120, 240, 480};
+
+    /**
+     * Reason chips and length buttons. Choosing a reason only selects it; the
+     * length (or UNTIL…) is what starts the timer, so a mistap on a reason
+     * cannot hide the stream by accident.
+     */
+    private void buildAwayChoices() {
+        if (awayPresets == null || awayDurs == null) return;
+        awayPresets.removeAllViews();
+        for (int i = 0; i < AWAY_REASONS.length; i++) {
+            final String reason = AWAY_REASONS[i];
+            boolean on = reason.equals(awayReason);
+            Button chip = smallButton(reason.toUpperCase(),
+                on ? R.drawable.bg_btn_go : R.drawable.bg_btn_scene,
+                color(on ? R.color.txt : R.color.faint), 9.5f);
+            chip.setPadding(0, 0, 0, 0);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(40), 1f);
+            if (i > 0) lp.leftMargin = dp(5);
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> {
+                awayReason = reason;
+                buildAwayChoices();
+                renderAwayStatus(lastAway);
+            });
+            awayPresets.addView(chip);
+        }
+
+        awayDurs.removeAllViews();
+        for (int i = 0; i < AWAY_MINUTES.length; i++) {
+            final int minutes = AWAY_MINUTES[i];
+            Button len = smallButton(minutes % 60 == 0 ? (minutes / 60) + "H" : minutes + "M",
+                R.drawable.bg_btn_scene, color(R.color.txt), 10.5f);
+            len.setPadding(0, 0, 0, 0);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(38), 1f);
+            if (i > 0) lp.leftMargin = dp(5);
+            len.setLayoutParams(lp);
+            len.setOnClickListener(v -> setAway(awayReason, minutes, 0));
+            awayDurs.addView(len);
+        }
+    }
+
+    /** "at work · back 18:30 · 2h 14m left", refreshed by every state poll. */
+    private void renderAwayStatus(JSONObject away) {
+        lastAway = away;
+        if (awayStatus == null) return;
+        long until = away == null ? 0 : away.optLong("until", 0);
+        long now = System.currentTimeMillis();
+        if (until > now) {
+            awayStatus.setText(away.optString("reason", "away") + "  ·  back " + clock(until)
+                + "  ·  " + shortLeft(until - now) + " left");
+            awayStatus.setTextColor(color(R.color.txt));
+        } else if (until > 0) {
+            awayStatus.setText("last timer is over — the overlay shows nothing now");
+            awayStatus.setTextColor(color(R.color.faint));
+        } else {
+            awayStatus.setText(awayReason + " selected  ·  pick a length, or UNTIL… for a return time");
+            awayStatus.setTextColor(color(R.color.faint));
+        }
+    }
+
+    private void setAway(String reason, int minutes, long until) {
+        if (api == null) return;
+        JSONObject body = new JSONObject();
+        try {
+            if (reason == null) {
+                body.put("action", "clear");
+            } else {
+                body.put("reason", reason);
+                if (until > 0) body.put("until", until);
+                else body.put("minutes", minutes);
+            }
+        } catch (JSONException ignored) {
+        }
+        post("/api/away", body, reason == null ? "away timer cleared" : "away: " + reason, null);
+    }
+
+    /** A return time from the clock: today, or tomorrow when it has passed. */
+    private void pickAwayUntil() {
+        final java.util.Calendar now = java.util.Calendar.getInstance();
+        new android.app.TimePickerDialog(this, (view, hour, minute) -> {
+            java.util.Calendar end = java.util.Calendar.getInstance();
+            end.set(java.util.Calendar.HOUR_OF_DAY, hour);
+            end.set(java.util.Calendar.MINUTE, minute);
+            end.set(java.util.Calendar.SECOND, 0);
+            end.set(java.util.Calendar.MILLISECOND, 0);
+            if (end.getTimeInMillis() <= System.currentTimeMillis() + 60000) {
+                end.add(java.util.Calendar.DAY_OF_MONTH, 1);
+            }
+            setAway(awayReason, 0, end.getTimeInMillis());
+        }, now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE), true).show();
+    }
+
+    private static String clock(long at) {
+        return new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(at));
+    }
+
+    private static String shortLeft(long ms) {
+        long mins = Math.max(0, Math.round(ms / 60000.0));
+        if (mins < 60) return mins + "m";
+        long h = mins / 60;
+        long m = mins % 60;
+        return m == 0 ? h + "h" : h + "h " + m + "m";
+    }
 
     private void renderTwitch() {
         if (twList == null || state == null) return;

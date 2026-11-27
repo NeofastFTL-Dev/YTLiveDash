@@ -33,3 +33,4 @@ cloudflared
 sounds/
 _check-*.png
 *.tar.gz
+away.json

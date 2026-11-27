@@ -1,8 +1,8 @@
 /**
  * The away timer.
  *
- * "at work", "sleeping", "busy" — one reason and the time it ends, so viewers
- * know when to come back. The phone remote sets it, /api/state carries it, and
+ * "at work", "outside", "sleeping", "busy" — one reason and the time it ends,
+ * so viewers know when to come back. The phone remote sets it, /api/state carries it, and
  * the BRB overlay counts down to it.
  *
  * It is a one-shot timer, not a schedule: it expires by itself, and nothing is
@@ -14,7 +14,7 @@ const path = require("node:path");
 const FILE = path.join(__dirname, "away.json");
 const MAX_REASON = 60;
 const MAX_MINUTES = 24 * 60;
-const PRESETS = ["at work", "sleeping", "busy"];
+const PRESETS = ["at work", "outside", "sleeping", "busy"];
 
 function createAway(log = () => {}) {
   let data = load();

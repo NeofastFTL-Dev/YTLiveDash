@@ -381,6 +381,80 @@
                 android:orientation="vertical"
                 android:padding="12dp">
 
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="AWAY TIMER · BACK AT" />
+
+                <TextView
+                    android:id="@+id/awayStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="not set — the BRB overlay shows nothing"
+                    android:textColor="@color/faint"
+                    android:textSize="10.5sp" />
+
+                <LinearLayout
+                    android:id="@+id/awayPresets"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal" />
+
+                <LinearLayout
+                    android:id="@+id/awayDurs"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/awayUntil"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn"
+                        android:fontFamily="monospace"
+                        android:text="UNTIL…"
+                        android:textColor="@color/txt"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/awayClear"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginLeft="6dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_stop"
+                        android:fontFamily="monospace"
+                        android:text="CLEAR"
+                        android:textColor="#FFD0D8"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="pick a reason, then a length · the BRB overlay says why and when the stream is back"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
                 <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SCENES" />
 
                 <HorizontalScrollView
