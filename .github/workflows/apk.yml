@@ -20,9 +20,9 @@ jobs:
       # and the app asks for the real one on first run.
       EMILLI_DEFAULT_URL: http://192.168.100.73:8123/mobile.html
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -55,14 +55,14 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           ls -l emilli-remote-*.apk
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: emilli-remote-apk
           path: emilli-remote-*.apk
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: emilli-remote-*.apk
           name: Emilli Remote v${{ env.VERSION }}
