@@ -2744,6 +2744,14 @@ async function sceneSources(sceneName) {
     const picture = kind === "browser_source" && /\/media\/[^/]+\.html$/i.test(url);
     const animated = /\.(gif|webp)\.html$/i.test(url);
     const type = isTextKind(kind) ? "text" : picture ? (animated ? "gif" : "image") : kind === "image_source" ? "image" : "other";
+    const tr = it.sceneItemTransform || {};
+    const align = Number(tr.alignment) || 0;
+    const boxW = Number(tr.width) || 0;
+    const boxH = Number(tr.height) || 0;
+    // OBS keeps position at the alignment anchor, but the phone drags the
+    // visible box, so send its top-left corner as well.
+    const boxLeft = (Number(tr.positionX) || 0) - (align & 1 ? 0 : align & 2 ? boxW : boxW / 2);
+    const boxTop = (Number(tr.positionY) || 0) - (align & 4 ? 0 : align & 8 ? boxH : boxH / 2);
     items.push({
       id: it.sceneItemId,
       name: it.sourceName,
@@ -2761,8 +2769,11 @@ async function sceneSources(sceneName) {
       // Where the source sits on the canvas, for the position nudge.
       x: Number((it.sceneItemTransform || {}).positionX) || 0,
       y: Number((it.sceneItemTransform || {}).positionY) || 0,
-      width: Number((it.sceneItemTransform || {}).width) || 0,
-      height: Number((it.sceneItemTransform || {}).height) || 0,
+      width: boxW,
+      height: boxH,
+      // The visible box on the canvas, for the layout tab's drag surface.
+      left: Math.round(boxLeft),
+      top: Math.round(boxTop),
     });
   }
   return { scene, items, canvas: { width: canvasW, height: canvasH } };
@@ -3277,6 +3288,39 @@ const server = http.createServer(async (req, res) => {
         return json(res, { ok: false, error: e.message });
       }
     }
+    // The scene exactly as OBS renders it, for the layout tab. Bytes rather
+    // than JSON so the phone hands it straight to BitmapFactory; the source
+    // boxes come from /api/obs/sources and are drawn on top.
+    if (p === "/api/obs/scene/screenshot" && req.method === "GET") {
+      if (!obs.authenticated) return json(res, { ok: false, error: "OBS not connected" }, 503);
+      try {
+        const scene =
+          String(url.searchParams.get("scene") || "").trim() ||
+          (await obs.request("GetCurrentProgramScene")).currentProgramSceneName;
+        if (!scene) return json(res, { ok: false, error: "scene required" }, 400);
+        const width = Math.max(320, Math.min(1920, Math.round(Number(url.searchParams.get("width")) || 960)));
+        const quality = Math.max(10, Math.min(100, Math.round(Number(url.searchParams.get("q")) || 70)));
+        const shot = await obs.request("GetSourceScreenshot", {
+          sourceName: scene,
+          imageFormat: "jpg",
+          imageWidth: width,
+          imageCompressionQuality: quality,
+        });
+        const m = /^data:image\/[a-z]+;base64,(.+)$/s.exec(String(shot.imageData || ""));
+        if (!m) return json(res, { ok: false, error: "OBS sent no picture" }, 502);
+        const buf = Buffer.from(m[1], "base64");
+        res.writeHead(200, {
+          "Content-Type": "image/jpeg",
+          "Content-Length": buf.length,
+          "Cache-Control": "no-store",
+        });
+        return res.end(buf);
+      } catch (e) {
+        console.log("[obs] scene screenshot failed:", e.message);
+        return json(res, { ok: false, error: e.message }, 502);
+      }
+    }
+
     // Show/hide one source inside a scene (the ON/OFF switches in the app).
     if (p === "/api/obs/source/visible" && req.method === "POST") {
       const body = await readJson(req);
@@ -3355,9 +3399,11 @@ const server = http.createServer(async (req, res) => {
         const list = await obs.request("GetSceneItemList", { sceneName: scene });
         const item = (list.sceneItems || []).find((i) => Number(i.sceneItemId) === sceneItemId);
         if (!item) return json(res, { ok: false, error: "source is not in this scene" }, 404);
+        let canvasW = 1920;
         let canvasH = 1080;
         try {
           const v = await obs.request("GetVideoSettings");
+          canvasW = Number(v.baseWidth) || canvasW;
           canvasH = Number(v.baseHeight) || canvasH;
         } catch {
           /* fall back to 1080p */
@@ -3370,31 +3416,49 @@ const server = http.createServer(async (req, res) => {
         const h = bounds && Number(t.boundsHeight) > 0
           ? Number(t.boundsHeight)
           : Number(t.height) || Number(t.sourceHeight) || 0;
+        const w = bounds && Number(t.boundsWidth) > 0
+          ? Number(t.boundsWidth)
+          : Number(t.width) || Number(t.sourceWidth) || 0;
         // Distance from the source's top edge down to its alignment anchor.
         const anchor = align & 4 ? 0 : align & 8 ? h : h / 2;
+        const anchorX = align & 1 ? 0 : align & 2 ? w : w / 2;
         const step = Math.max(1, Math.round(Number(body.step) || canvasH * 0.05));
+        let x = Number(t.positionX) || 0;
         let y = Number(t.positionY) || 0;
         if (body.to === "top") y = anchor;
         else if (body.to === "bottom") y = canvasH - h + anchor;
         else if (body.to === "middle") y = (canvasH - h) / 2 + anchor;
         else if (Number.isFinite(Number(body.deltaY))) y += Number(body.deltaY);
-        else y += (Number(body.steps) || 0) * step;
+        else if (!Number.isFinite(Number(body.left)) && !Number.isFinite(Number(body.top)))
+          y += (Number(body.steps) || 0) * step;
+        // A drag from the layout tab sends the visible box's corner; OBS wants
+        // the anchor, and the box must stay on the canvas.
+        if (Number.isFinite(Number(body.left)) || Number.isFinite(Number(body.top))) {
+          if (Number.isFinite(Number(body.left))) x = Number(body.left) + anchorX;
+          if (Number.isFinite(Number(body.top))) y = Number(body.top) + anchor;
+          x = Math.max(0, Math.min(canvasW - w, x - anchorX)) + anchorX;
+          y = Math.max(0, Math.min(canvasH - h, y - anchor)) + anchor;
+        }
+        x = Math.round(x);
         y = Math.round(y);
         await obs.request("SetSceneItemTransform", {
           sceneName: scene,
           sceneItemId,
           sceneItemTransform: {
-            positionX: Number(t.positionX) || 0,
+            positionX: x,
             positionY: y,
           },
         });
-        console.log(`[obs] "${scene}" ${item.sourceName}: y ${Math.round(Number(t.positionY) || 0)} → ${y} of ${canvasH}`);
+        console.log(`[obs] "${scene}" ${item.sourceName}: ${Math.round(Number(t.positionX) || 0)},${Math.round(Number(t.positionY) || 0)} → ${x},${y} of ${canvasW}x${canvasH}`);
         return json(res, {
           ok: true,
           scene,
           sceneItemId,
-          x: Number(t.positionX) || 0,
+          x,
           y,
+          left: Math.round(x - anchorX),
+          top: Math.round(y - anchor),
+          canvasW,
           canvasH,
           step,
         });

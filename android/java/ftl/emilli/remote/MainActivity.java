@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Insets;
 import android.graphics.Rect;
 import android.graphics.Typeface;
@@ -105,6 +107,12 @@ public class MainActivity extends Activity {
     private List<String> sceneNames = new ArrayList<>();
     private JSONArray sceneSourceItems;
     private int sceneCanvasH = 1080;
+
+    // layout tab: the scene as OBS renders it, dragged with a thumb
+    private SceneCanvas layoutCanvas;
+    private TextView layoutHint, tabLayout;
+    private LinearLayout layoutSceneBox, panelLayout;
+    private boolean layoutLoading;
 
     // alert preview: the same card the OBS overlay draws, rendered on the phone
     private LinearLayout alertPreview;
@@ -385,6 +393,11 @@ public class MainActivity extends Activity {
         panelScenes = findViewById(R.id.panelScenes);
         tabMixer = findViewById(R.id.tabMixer);
         panelMixer = findViewById(R.id.panelMixer);
+        tabLayout = findViewById(R.id.tabLayout);
+        panelLayout = findViewById(R.id.panelLayout);
+        layoutCanvas = findViewById(R.id.layoutCanvas);
+        layoutHint = findViewById(R.id.layoutHint);
+        layoutSceneBox = findViewById(R.id.layoutSceneBox);
         mixerList = findViewById(R.id.mixerList);
         mixerHint = findViewById(R.id.mixerHint);
         tabsScroll = findViewById(R.id.tabsScroll);
@@ -474,6 +487,8 @@ public class MainActivity extends Activity {
         tabBrb.setOnClickListener(v -> showTab(5));
         tabScenes.setOnClickListener(v -> showTab(6));
         tabMixer.setOnClickListener(v -> showTab(7));
+        tabLayout.setOnClickListener(v -> showTab(8));
+        bindLayoutCanvas();
         findViewById(R.id.sceneAddText).setOnClickListener(v -> newSceneText());
         findViewById(R.id.sceneAddImage).setOnClickListener(v -> pickPicture());
 
@@ -554,8 +569,9 @@ public class MainActivity extends Activity {
 
     private void showTab(int index) {
         tab = index;
-        TextView[] tabs = {tabLive, tabMusic, tabYoutube, tabSystem, tabTwitch, tabBrb, tabScenes, tabMixer};
-        LinearLayout[] panels = {panelLive, panelMusic, panelYoutube, panelSystem, panelTwitch, panelBrb, panelScenes, panelMixer};
+        if (index != 8) stopLayoutPreview();
+        TextView[] tabs = {tabLive, tabMusic, tabYoutube, tabSystem, tabTwitch, tabBrb, tabScenes, tabMixer, tabLayout};
+        LinearLayout[] panels = {panelLive, panelMusic, panelYoutube, panelSystem, panelTwitch, panelBrb, panelScenes, panelMixer, panelLayout};
         for (int i = 0; i < tabs.length; i++) {
             if (tabs[i] == null) continue;
             tabs[i].setSelected(i == index);
@@ -587,6 +603,11 @@ public class MainActivity extends Activity {
             fetchState();
         } else if (index == 7) {
             refreshMixer();
+            fetchState();
+        } else if (index == 8) {
+            if (sceneTarget.isEmpty()) sceneTarget = currentScene;
+            renderLayoutScenes();
+            startLayoutPreview();
             fetchState();
         }
     }
@@ -992,6 +1013,7 @@ public class MainActivity extends Activity {
      * shows which one is on air, and nothing here switches the program scene.
      */
     private void renderScenePick() {
+        if (tab == 8) renderLayoutScenes();
         if (scenePickBox == null) return;
         if (sceneTarget.isEmpty() || (!sceneNames.isEmpty() && !sceneNames.contains(sceneTarget))) {
             sceneTarget = currentScene.isEmpty()
@@ -1168,6 +1190,145 @@ public class MainActivity extends Activity {
             .setView(box)
             .setNegativeButton("CLOSE", null)
             .show();
+    }
+
+    /* ------------------------------------------------------------ layout tab */
+
+    /**
+     * The scene render, the source boxes and the drag itself. OBS is the only
+     * source of truth, so the picture is re-rendered every few seconds while
+     * this tab is open; a drag in progress holds the refresh off so the box
+     * under the thumb never jumps back.
+     */
+    private final Runnable layoutTick = new Runnable() {
+        public void run() {
+            if (tab != 8) return;
+            refreshLayoutPreview();
+            ui.postDelayed(this, 3000);
+        }
+    };
+
+    private void startLayoutPreview() {
+        ui.removeCallbacks(layoutTick);
+        ui.post(layoutTick);
+    }
+
+    private void stopLayoutPreview() {
+        ui.removeCallbacks(layoutTick);
+    }
+
+    private void renderLayoutScenes() {
+        if (layoutSceneBox == null) return;
+        layoutSceneBox.removeAllViews();
+        for (int i = 0; i < sceneNames.size(); i++) {
+            final String name = sceneNames.get(i);
+            boolean here = name.equals(sceneTarget);
+            Button chip = smallButton(here ? "▶ " + name : name,
+                here ? R.drawable.bg_btn_go : R.drawable.bg_btn_scene,
+                color(here ? R.color.txt : R.color.faint), 11f);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(34));
+            if (i > 0) lp.leftMargin = dp(6);
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> {
+                sceneTarget = name;
+                renderLayoutScenes();
+                refreshLayoutPreview();
+            });
+            layoutSceneBox.addView(chip);
+        }
+        if (sceneNames.isEmpty()) layoutSceneBox.addView(label("no scenes yet (OBS offline?)"));
+    }
+
+    private void bindLayoutCanvas() {
+        if (layoutCanvas == null) return;
+        layoutCanvas.setListener(new SceneCanvas.Listener() {
+            public void onPick(String name, int left, int top) {
+                layoutHint.setText(name + "  ·  " + left + "," + top + "  ·  let go to place it");
+            }
+
+            public void onDrop(int sceneItemId, String name, int left, int top) {
+                if (api == null) return;
+                final Api a = api;
+                final JSONObject body = positionBody(sceneItemId);
+                try {
+                    body.put("left", left);
+                    body.put("top", top);
+                } catch (JSONException ignored) {
+                }
+                net.execute(() -> {
+                    try {
+                        final JSONObject r = a.post("/api/obs/source/position", body);
+                        ui.post(() -> {
+                            if (!r.optBoolean("ok", false)) {
+                                toast(r.optString("error", "move failed"));
+                                return;
+                            }
+                            layoutHint.setText(name + "  ·  " + r.optInt("left", left) + ","
+                                + r.optInt("top", top) + "  ·  moved in OBS");
+                            refreshSceneSources();
+                        });
+                    } catch (Api.Unauthorized e) {
+                        ui.post(() -> sessionLost());
+                    } catch (IOException e) {
+                        ui.post(() -> toast("no connection"));
+                    }
+                });
+            }
+        });
+    }
+
+    private void refreshLayoutPreview() {
+        if (api == null || layoutCanvas == null) return;
+        if (sceneTarget.isEmpty()) sceneTarget = currentScene;
+        if (sceneTarget.isEmpty()) {
+            layoutHint.setText("no scene yet — pick one above");
+            return;
+        }
+        if (layoutLoading || layoutCanvas.isDragging()) return;
+        layoutLoading = true;
+        final Api a = api;
+        final String scene = sceneTarget;
+        net.execute(() -> {
+            byte[] jpeg = null;
+            JSONObject sources = null;
+            String error = null;
+            try {
+                jpeg = a.bytes("/api/obs/scene/screenshot?scene=" + Uri.encode(scene) + "&width=960");
+                sources = a.get("/api/obs/sources?scene=" + Uri.encode(scene));
+            } catch (Api.Unauthorized e) {
+                ui.post(() -> {
+                    layoutLoading = false;
+                    sessionLost();
+                });
+                return;
+            } catch (IOException e) {
+                error = e.getMessage() == null ? "no connection" : e.getMessage();
+            }
+            final Bitmap bmp = jpeg == null ? null : BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+            final JSONObject r = sources;
+            final String err = error;
+            ui.post(() -> {
+                layoutLoading = false;
+                if (tab != 8 || !scene.equals(sceneTarget)) {
+                    if (bmp != null) bmp.recycle();
+                    return;
+                }
+                if (bmp == null) {
+                    layoutCanvas.setNote(err != null ? err : "OBS sent no picture");
+                    layoutHint.setText("no picture — is OBS open and this scene still there?");
+                    return;
+                }
+                layoutCanvas.setFrame(bmp);
+                if (r != null && r.optBoolean("ok", false)) {
+                    JSONObject canvas = r.optJSONObject("canvas");
+                    layoutCanvas.setSources(r.optJSONArray("items"),
+                        canvas == null ? 1920 : canvas.optInt("width", 1920),
+                        canvas == null ? 1080 : canvas.optInt("height", 1080));
+                }
+                layoutHint.setText("drag a box to move that source · " + scene);
+            });
+        });
     }
 
     private void refreshSceneSources() {

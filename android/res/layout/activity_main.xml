@@ -184,8 +184,88 @@
                 android:text="MIXER"
                 android:textColor="@color/tab_text"
                 android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tabLayout"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/bg_tab"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:text="LAYOUT"
+                android:textColor="@color/tab_text"
+                android:textSize="10sp" />
             </LinearLayout>
         </HorizontalScrollView>
+
+        <!-- ================= LAYOUT ================= -->
+        <LinearLayout
+            android:id="@+id/panelLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="LAYOUT · THE SCENE ITSELF" />
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/layoutSceneBox"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
+
+                <TextView
+                    android:id="@+id/layoutHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="the scene as OBS draws it · drag a box to move that source"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="10dp">
+
+                <ftl.emilli.remote.SceneCanvas
+                    android:id="@+id/layoutCanvas"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="monospace"
+                    android:text="a box per visible source · tap to pick it · drag to place it · the picture re-renders every 3 s · nothing switches the program"
+                    android:textColor="@color/faint"
+                    android:textSize="9.5sp" />
+            </LinearLayout>
+        </LinearLayout>
 
         <!-- ================= LIVE ================= -->
         <LinearLayout

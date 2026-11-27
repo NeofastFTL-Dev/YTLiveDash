@@ -60,6 +60,40 @@ final class Api {
         return c;
     }
 
+    /**
+     * A response that is not JSON (the scene render): the raw bytes, ready for
+     * BitmapFactory. Nothing here touches the UI thread.
+     */
+    byte[] bytes(String path) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
+        c.setRequestMethod("GET");
+        c.setConnectTimeout(8000);
+        c.setReadTimeout(12000);
+        c.setRequestProperty("Accept", "image/jpeg");
+        c.setRequestProperty("User-Agent", UA);
+        if (cookie != null) c.setRequestProperty("Cookie", COOKIE + "=" + cookie);
+
+        int code = c.getResponseCode();
+        if (code == 401) {
+            drain(c.getErrorStream());
+            c.disconnect();
+            throw new Unauthorized();
+        }
+        if (code != 200) {
+            String why = drain(c.getErrorStream());
+            c.disconnect();
+            throw new IOException(why.isEmpty() ? "HTTP " + code : why);
+        }
+        InputStream in = c.getInputStream();
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        int n;
+        while ((n = in.read(chunk)) > 0) buf.write(chunk, 0, n);
+        in.close();
+        c.disconnect();
+        return buf.toByteArray();
+    }
+
     private JSONObject send(String method, String path, JSONObject body) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
         c.setRequestMethod(method);
