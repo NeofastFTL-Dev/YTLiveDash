@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
     private boolean layoutLoading;
 
     // away timer: a reason plus the clock time the stream is back
-    private TextView awayStatus;
+    private TextView awayStatus, awayNext;
     private LinearLayout awayPresets, awayDurs, awayShifts;
     private String shiftSig = "";
     private String awayReason = "";
@@ -499,6 +499,7 @@ public class MainActivity extends Activity {
         bindLayoutCanvas();
 
         awayStatus = findViewById(R.id.awayStatus);
+        awayNext = findViewById(R.id.awayNext);
         awayPresets = findViewById(R.id.awayPresets);
         awayDurs = findViewById(R.id.awayDurs);
         awayShifts = findViewById(R.id.awayShifts);
@@ -1944,6 +1945,7 @@ public class MainActivity extends Activity {
     private void renderAwayStatus(JSONObject away) {
         lastAway = away;
         renderAwayShifts(away);
+        renderAwayNext(away);
         if (awayStatus == null) return;
         long until = away == null ? 0 : away.optLong("until", 0);
         long now = System.currentTimeMillis();
@@ -2014,6 +2016,22 @@ public class MainActivity extends Activity {
 
             awayShifts.addView(row);
         }
+    }
+
+    /** "next: Mon 09:00 · at work" — the schedule being set, without waiting for it. */
+    private void renderAwayNext(JSONObject away) {
+        if (awayNext == null) return;
+        JSONObject next = away == null ? null : away.optJSONObject("next");
+        if (next == null) {
+            awayNext.setText("no shifts scheduled");
+            return;
+        }
+        long at = next.optLong("at", 0);
+        awayNext.setText("next: " + weekdayShort(at) + " " + clock(at) + "  ·  " + next.optString("reason", ""));
+    }
+
+    private static String weekdayShort(long at) {
+        return new SimpleDateFormat("EEE", Locale.US).format(new Date(at));
     }
 
     private static String shiftLabel(JSONObject s) {

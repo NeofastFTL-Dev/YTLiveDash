@@ -119,6 +119,39 @@ function createAway(log = () => {}) {
     return null;
   }
 
+  /**
+   * The next shift to start after `now`, so both remotes can show that the
+   * schedule is set without waiting for it to fire. Null when nothing is
+   * scheduled at all.
+   */
+  function nextShift(now) {
+    let best = null;
+    for (const shift of data.schedule) {
+      const start = minutesOf(shift.start);
+      if (start < 0) continue;
+      for (let add = 0; add <= 7; add++) {
+        const day = new Date(now);
+        day.setHours(0, 0, 0, 0);
+        day.setDate(day.getDate() + add);
+        if (!shift.days.includes(day.getDay())) continue;
+        const at = day.getTime() + start * 60000;
+        if (at <= now) continue;
+        if (!best || at < best.at) {
+          best = {
+            shiftId: shift.id,
+            at,
+            start: shift.start,
+            end: shift.end,
+            reason: shift.reason,
+            days: shift.days.slice(),
+          };
+        }
+        break;
+      }
+    }
+    return best;
+  }
+
   /** What the remote and the overlay see. An expired timer is simply off. */
   function summary() {
     const now = Date.now();
@@ -134,6 +167,7 @@ function createAway(log = () => {}) {
       source: manual ? "manual" : shift ? "schedule" : "",
       shiftId: shift ? shift.shift.id : "",
       schedule: data.schedule.slice(),
+      next: nextShift(now),
     };
   }
 

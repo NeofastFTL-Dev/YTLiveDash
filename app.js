@@ -184,6 +184,34 @@ function render() {
 
   renderFeed();
   renderIntegrations(now);
+  renderAway(now);
+}
+
+// The away timer the BRB overlay shows, plus the next shift: one line that
+// proves the weekly schedule is set without waiting for 09:00 to watch it fire.
+function renderAway(now) {
+  const el = $("stageAway");
+  if (!el) return;
+  const aw = (state.integrations || {}).away || {};
+  const next = aw.next || null;
+  const nextAt = next ? new Date(next.at) : null;
+  const nextText = next ? `next: ${weekdayShort(nextAt)} ${hhmm(nextAt)} ${next.reason}` : "";
+  if (aw.active && aw.until > now) {
+    const end = new Date(aw.until);
+    const shift = aw.source === "schedule" ? " · shift" : "";
+    el.hidden = false;
+    el.textContent = `away now: ${aw.reason} · back ${hhmm(end)}${shift}${nextText ? " · " + nextText : ""}`;
+  } else if (nextText) {
+    el.hidden = false;
+    el.textContent = nextText;
+  } else {
+    el.hidden = true;
+    el.textContent = "";
+  }
+}
+
+function weekdayShort(d) {
+  return d.toLocaleDateString(undefined, { weekday: "short" });
 }
 
 function renderFeed() {
@@ -349,6 +377,41 @@ function renderIntegrations(now) {
     ultraBtn.title = yt.oauthConnected
       ? "end this broadcast and start a new one with Ultra-low latency (~2–5 s)"
       : "authorize youtube first — open /oauth/start";
+  }
+
+  // Is anything actually on air? OBS can encode happily while YouTube has no
+  // broadcast bound to the stream key — the channel then shows no live video
+  // and nothing is recorded. Say that in words instead of looking healthy.
+  const airEl = $("ytOnAir");
+  const obsNow = state.integrations.obs || {};
+  const air = yt.onAir || {};
+  if (airEl) {
+    let airCls = "yt-subs air";
+    let airTxt;
+    if (air.live) {
+      airCls += " good";
+      airTxt = `ON AIR: ${air.id}${air.at ? ` · checked ${ago(air.at)}` : ""}`;
+    } else if (obsNow.streaming) {
+      airCls += " bad";
+      airTxt = air.status === "upcoming" || air.status === "ready"
+        ? `NOT LIVE YET — broadcast ${air.id || "?"} is waiting for the encoder`
+        : "NOTHING ON AIR — OBS is streaming, YouTube has no live broadcast · press GO LIVE";
+    } else if (air.status === "created" || air.status === "ready" || air.status === "upcoming") {
+      airCls += " warn";
+      airTxt = `broadcast ${air.id || "?"} is ready — goes live when OBS starts`;
+    } else {
+      airCls += " warn";
+      airTxt = "nothing on air";
+    }
+    airEl.className = airCls;
+    airEl.textContent = airTxt;
+    airEl.title = "read from the YouTube Live API — costs no search quota";
+  }
+  const goBtn = $("obsStart");
+  if (goBtn) {
+    const missing = !!(obsNow.streaming && !air.live);
+    goBtn.textContent = missing ? "GO LIVE \u26A0 NOTHING ON AIR" : "GO LIVE";
+    goBtn.className = missing ? "mini danger" : "mini";
   }
 
   // The auto-fix: after every GO LIVE the class is read anyway, so when it is

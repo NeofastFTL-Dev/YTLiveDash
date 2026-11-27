@@ -393,6 +393,16 @@
                     android:textColor="@color/faint"
                     android:textSize="10.5sp" />
 
+                <TextView
+                    android:id="@+id/awayNext"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="monospace"
+                    android:text=""
+                    android:textColor="@color/faint"
+                    android:textSize="10sp" />
+
                 <LinearLayout
                     android:id="@+id/awayPresets"
                     android:layout_width="match_parent"
