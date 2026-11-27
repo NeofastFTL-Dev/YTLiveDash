@@ -3235,13 +3235,16 @@ const server = http.createServer(async (req, res) => {
 
     // Away timer: "at work / sleeping / busy, back at HH:MM". `until` is an
     // absolute end time from the phone's time picker, `minutes` a countdown.
+    // The weekly shifts ride on the same endpoint: schedule-add / schedule-remove.
     if (p === "/api/away" && req.method === "GET") return json(res, { ok: true, ...away.data() });
     if (req.method === "POST" && p === "/api/away") {
       const body = await readJson(req);
-      const r =
-        String(body.action || "set") === "clear"
-          ? away.clear()
-          : away.set(body.reason, body.minutes, body.until);
+      const action = String(body.action || "set");
+      let r;
+      if (action === "clear") r = away.clear();
+      else if (action === "schedule-add") r = away.addShift(body);
+      else if (action === "schedule-remove") r = away.removeShift(body.id);
+      else r = away.set(body.reason, body.minutes, body.until);
       if (r.ok) broadcast("state", publicState());
       return json(res, { ...r, state: publicState() }, r.ok ? 200 : 400);
     }

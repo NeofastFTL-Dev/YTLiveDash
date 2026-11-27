@@ -116,7 +116,8 @@ public class MainActivity extends Activity {
 
     // away timer: a reason plus the clock time the stream is back
     private TextView awayStatus;
-    private LinearLayout awayPresets, awayDurs;
+    private LinearLayout awayPresets, awayDurs, awayShifts;
+    private String shiftSig = "";
     private String awayReason = "";
     private final List<String> awayReasons = new ArrayList<>();
     private JSONObject lastAway;
@@ -500,6 +501,8 @@ public class MainActivity extends Activity {
         awayStatus = findViewById(R.id.awayStatus);
         awayPresets = findViewById(R.id.awayPresets);
         awayDurs = findViewById(R.id.awayDurs);
+        awayShifts = findViewById(R.id.awayShifts);
+        findViewById(R.id.awayAddShift).setOnClickListener(v -> addAwayShiftDialog());
         findViewById(R.id.awayUntil).setOnClickListener(v -> pickAwayUntil());
         findViewById(R.id.awayClear).setOnClickListener(v -> setAway(null, 0, 0));
         buildAwayChoices();
@@ -1940,12 +1943,14 @@ public class MainActivity extends Activity {
     /** "at work · back 18:30 · 2h 14m left", refreshed by every state poll. */
     private void renderAwayStatus(JSONObject away) {
         lastAway = away;
+        renderAwayShifts(away);
         if (awayStatus == null) return;
         long until = away == null ? 0 : away.optLong("until", 0);
         long now = System.currentTimeMillis();
         if (until > now) {
+            String shift = "schedule".equals(away.optString("source", "")) ? "  ·  shift" : "";
             awayStatus.setText(away.optString("reason", "away") + "  ·  back " + clock(until)
-                + "  ·  " + shortLeft(until - now) + " left");
+                + "  ·  " + shortLeft(until - now) + " left" + shift);
             awayStatus.setTextColor(color(R.color.txt));
         } else if (until > 0) {
             awayStatus.setText("last timer is over — the overlay shows nothing now");
@@ -1955,6 +1960,222 @@ public class MainActivity extends Activity {
             awayStatus.setText(what + "  ·  pick a length, or UNTIL… for a return time");
             awayStatus.setTextColor(color(R.color.faint));
         }
+    }
+
+    /**
+     * The weekly shifts as OBS-free lines: "Mon–Fri 09:00–17:00 · at work", the
+     * running one marked ▶ now. Rebuilt only when the list actually changes, so
+     * the two-second state poll cannot eat a tap on ✕.
+     */
+    private void renderAwayShifts(JSONObject away) {
+        if (awayShifts == null) return;
+        JSONArray list = away == null ? null : away.optJSONArray("schedule");
+        final String runningId = away == null ? "" : away.optString("shiftId", "");
+        StringBuilder sig = new StringBuilder();
+        for (int i = 0; list != null && i < list.length(); i++) {
+            JSONObject s = list.optJSONObject(i);
+            if (s == null) continue;
+            sig.append(s.optString("id")).append(':').append(s.optString("start")).append('-')
+                .append(s.optString("end")).append(':').append(s.optString("reason")).append('|');
+        }
+        sig.append('#').append(runningId);
+        if (sig.toString().equals(shiftSig)) return;
+        shiftSig = sig.toString();
+
+        awayShifts.removeAllViews();
+        if (list == null || list.length() == 0) {
+            awayShifts.addView(label("no shifts yet — ADD SHIFT makes one"));
+            return;
+        }
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject s = list.optJSONObject(i);
+            if (s == null) continue;
+            final String id = s.optString("id", "");
+            boolean on = id.equals(runningId);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(38));
+            if (i > 0) rlp.topMargin = dp(4);
+            row.setLayoutParams(rlp);
+
+            TextView line = label(shiftLabel(s) + (on ? "  ▶ now" : ""));
+            line.setTextSize(10.5f);
+            line.setTextColor(color(on ? R.color.ok : R.color.faint));
+            line.setSingleLine(true);
+            line.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            row.addView(line, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            Button del = smallButton("✕", R.drawable.bg_btn_scene, color(R.color.faint), 11f);
+            del.setPadding(0, 0, 0, 0);
+            del.setOnClickListener(v -> removeAwayShift(id));
+            row.addView(del, new LinearLayout.LayoutParams(dp(34), dp(34)));
+
+            awayShifts.addView(row);
+        }
+    }
+
+    private static String shiftLabel(JSONObject s) {
+        boolean[] on = new boolean[7];
+        JSONArray days = s.optJSONArray("days");
+        for (int i = 0; days != null && i < days.length(); i++) {
+            int d = days.optInt(i, -1);
+            if (d >= 0 && d <= 6) on[d] = true;
+        }
+        String[] names = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+        int[] values = {1, 2, 3, 4, 5, 6, 0};
+        StringBuilder span = new StringBuilder();
+        if (on[1] && on[2] && on[3] && on[4] && on[5]) {
+            span.append("Mon–Fri");
+        } else {
+            for (int i = 0; i < values.length; i++) {
+                if (!on[values[i]]) continue;
+                if (span.length() > 0) span.append(' ');
+                span.append(names[i]);
+            }
+        }
+        return span + "  " + s.optString("start", "") + "–" + s.optString("end", "")
+            + "  ·  " + s.optString("reason", "");
+    }
+
+    private void removeAwayShift(String id) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("action", "schedule-remove");
+            body.put("id", id);
+        } catch (JSONException ignored) {
+        }
+        post("/api/away", body, "shift removed", null);
+    }
+
+    /**
+     * One shift in a dialog: the days, a start and an end clock time, and the
+     * reason. Nothing is saved until ADD, and the reply carries the new list.
+     */
+    private void addAwayShiftDialog() {
+        LinearLayout box = dialogBox();
+        final boolean[] picked = new boolean[7];   // index = JS weekday, 0 = Sunday
+        final int[] values = {1, 2, 3, 4, 5, 6, 0};
+        final String[] names = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
+
+        TextView daysLabel = label("DAYS");
+        daysLabel.setTextSize(10f);
+        box.addView(daysLabel);
+
+        LinearLayout row1 = new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams r2lp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        r2lp.topMargin = dp(6);
+        row2.setLayoutParams(r2lp);
+        for (int i = 0; i < 7; i++) {
+            final int slot = i;
+            final Button day = smallButton(names[i], R.drawable.bg_btn_scene, color(R.color.faint), 10f);
+            day.setPadding(0, 0, 0, 0);
+            day.setOnClickListener(v -> {
+                picked[slot] = !picked[slot];
+                day.setBackgroundResource(picked[slot] ? R.drawable.bg_btn_go : R.drawable.bg_btn_scene);
+                day.setTextColor(color(picked[slot] ? R.color.txt : R.color.faint));
+            });
+            LinearLayout host = i < 4 ? row1 : row2;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(38), 1f);
+            if (host.getChildCount() > 0) lp.leftMargin = dp(5);
+            day.setLayoutParams(lp);
+            host.addView(day);
+        }
+        box.addView(row1);
+        box.addView(row2);
+
+        final int[] start = {9 * 60};
+        final int[] end = {17 * 60};
+        LinearLayout times = new LinearLayout(this);
+        times.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tlp.topMargin = dp(8);
+        times.setLayoutParams(tlp);
+
+        final Button startBtn = smallButton("START 09:00", R.drawable.bg_btn_scene, color(R.color.txt), 10.5f);
+        startBtn.setLayoutParams(new LinearLayout.LayoutParams(0, dp(42), 1f));
+        startBtn.setOnClickListener(v -> pickShiftTime(start[0], mins -> {
+            start[0] = mins;
+            startBtn.setText("START " + hhmm(mins));
+        }));
+        times.addView(startBtn);
+
+        final Button endBtn = smallButton("END 17:00", R.drawable.bg_btn_scene, color(R.color.txt), 10.5f);
+        LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        elp.leftMargin = dp(6);
+        endBtn.setLayoutParams(elp);
+        endBtn.setOnClickListener(v -> pickShiftTime(end[0], mins -> {
+            end[0] = mins;
+            endBtn.setText("END " + hhmm(mins));
+        }));
+        times.addView(endBtn);
+        box.addView(times);
+
+        TextView reasonLabel = label("REASON");
+        reasonLabel.setTextSize(10f);
+        LinearLayout.LayoutParams rllp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rllp.topMargin = dp(8);
+        reasonLabel.setLayoutParams(rllp);
+        box.addView(reasonLabel);
+
+        final String[] reason = {awayReason.isEmpty() ? (awayReasons.isEmpty() ? "at work" : awayReasons.get(0)) : awayReason};
+        LinearLayout reasons = new LinearLayout(this);
+        reasons.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rslp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rslp.topMargin = dp(6);
+        reasons.setLayoutParams(rslp);
+        for (int i = 0; i < awayReasons.size(); i++) {
+            final String name = awayReasons.get(i);
+            Button chip = smallButton(name.toUpperCase(), R.drawable.bg_btn_scene, color(R.color.txt), 9.5f);
+            chip.setPadding(0, 0, 0, 0);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(38), 1f);
+            if (i > 0) lp.leftMargin = dp(5);
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> reason[0] = name);
+            reasons.addView(chip);
+        }
+        box.addView(reasons);
+
+        new AlertDialog.Builder(this)
+            .setTitle("New weekly shift")
+            .setView(box)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("ADD", (d, w) -> {
+                JSONArray days = new JSONArray();
+                for (int i = 0; i < 7; i++) if (picked[i]) days.put(values[i]);
+                if (days.length() == 0) {
+                    toast("pick at least one day");
+                    return;
+                }
+                JSONObject body = new JSONObject();
+                try {
+                    body.put("action", "schedule-add");
+                    body.put("days", days);
+                    body.put("start", hhmm(start[0]));
+                    body.put("end", hhmm(end[0]));
+                    body.put("reason", reason[0]);
+                } catch (JSONException ignored) {
+                }
+                post("/api/away", body, "shift added", null);
+            })
+            .show();
+    }
+
+    private void pickShiftTime(int current, java.util.function.IntConsumer done) {
+        new android.app.TimePickerDialog(this, (view, hour, minute) -> done.accept(hour * 60 + minute),
+            current / 60, current % 60, true).show();
+    }
+
+    private static String hhmm(int minutes) {
+        return String.format(Locale.US, "%02d:%02d", minutes / 60, minutes % 60);
     }
 
     private void setAway(String reason, int minutes, long until) {
